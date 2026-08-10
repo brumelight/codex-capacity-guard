@@ -1,0 +1,11 @@
+.env
+.env.*
+*.log
+*.jsonl
+*.db
+*.sqlite
+*.sqlite3
+node_modules/
+plugin-data/
+.DS_Store
+Thumbs.db

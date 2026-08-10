@@ -1,0 +1,6 @@
+interface:
+  display_name: "使いすぎ防止モード"
+  short_description: "Stop at a chosen remaining-quota threshold"
+  default_prompt: "Use $capacity-guard to run this task until the remaining quota reaches my chosen threshold."
+policy:
+  allow_implicit_invocation: true

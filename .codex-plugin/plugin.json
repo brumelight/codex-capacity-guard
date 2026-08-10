@@ -1,0 +1,23 @@
+{
+  "name": "capacity-guard",
+  "version": "0.1.0+codex.20260809230926",
+  "description": "Remaining-quota threshold and reset guard for long-running Codex tasks.",
+  "author": {
+    "name": "BrumeLight"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "\u4f7f\u3044\u3059\u304e\u9632\u6b62\u30e2\u30fc\u30c9",
+    "shortDescription": "Stop long tasks at a chosen remaining-quota threshold.",
+    "longDescription": "Capacity Guard confirms the current quota and a whole-percentage stop threshold before activation, then safely stops hook-visible new work on threshold, reset, or observation boundaries.",
+    "developerName": "BrumeLight",
+    "category": "Productivity",
+    "capabilities": [
+      "skills",
+      "hooks"
+    ],
+    "defaultPrompt": [
+      "Use $capacity-guard to run this task until the remaining quota reaches my chosen threshold."
+    ]
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/scripts/capacity-guard-hook.mjs\"",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\scripts\\capacity-guard-hook.mjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/scripts/capacity-guard-hook.mjs\"",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\scripts\\capacity-guard-hook.mjs\"",
+            "timeout": 5,
+            "statusMessage": "Capacity Guard checkpoint"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "request_user_input",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/scripts/capacity-guard-hook.mjs\"",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\scripts\\capacity-guard-hook.mjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/scripts/capacity-guard-hook.mjs\"",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\scripts\\capacity-guard-hook.mjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/scripts/capacity-guard-hook.mjs\"",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\scripts\\capacity-guard-hook.mjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/scripts/capacity-guard-hook.mjs\"",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\scripts\\capacity-guard-hook.mjs\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+}
