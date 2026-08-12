@@ -8,6 +8,7 @@
 
 [English](README.en.md)
 
+[![Latest release](https://img.shields.io/github/v/release/brumelight/codex-capacity-guard?display_name=tag&sort=semver)](https://github.com/brumelight/codex-capacity-guard/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-informational)](LICENSE)
 
 </div>
@@ -23,7 +24,7 @@
 ## 機能
 
 - **1%刻みの停止しきい値** — 残量0〜100%の整数を自然文で指定
-- **有効化前の確認** — 現在の残量、停止しきい値、推論レベルを表示し、`accept` による承認を要求
+- **有効化前の確認** — 現在の残量、停止しきい値、推論レベルを表示し、推奨選択肢による明示承認を要求
 - **リセット検知** — 同じ利用枠の更新期間内で、100%未満から100%への回復を検知
 - **残量を確認できない場合の停止** — 有効な残量情報を2回連続で取得できない場合に停止
 - **すべてのエージェントで共有** — 親、子、孫エージェントが同じ停止状態を参照
@@ -53,11 +54,11 @@ Codexを再起動して新しいタスクを開き、次のように指定しま
 残量30％まで使いすぎ防止モードで実行して
 ```
 
-表示された現在の残量、停止しきい値、推論レベルを確認し、`accept` を選択すると有効になります。
+表示された現在の残量、停止しきい値、推論レベルを確認し、推奨選択肢（表示言語により `有効化 (Recommended)` または `accept (Recommended)`）を選ぶと有効になります。
 
 ### 選択肢形式の確認画面を有効にする（実験的）
 
-通常モードで `accept`／`deny` の選択肢を表示するには、個人設定の `~/.codex/config.toml` に次を追加します。
+通常モードで有効化／拒否の選択肢を表示するには、個人設定の `~/.codex/config.toml` に次を追加します。
 
 ```toml
 [features]
@@ -66,7 +67,7 @@ default_mode_request_user_input = true
 
 すでに `[features]` がある場合は、同じ見出しを増やさず、その中へ `default_mode_request_user_input = true` だけを追加してください。設定後はCodexを再起動し、新しいタスクを開きます。
 
-この設定は実験的な機能です。Codexのバージョンによって、仕様が変わったり利用できなかったりする可能性があります。選択肢を利用できない場合は、固定文による確認へ自動的に切り替わります。その場合も、有効化するには正確に `accept` と返信する必要があります。
+この設定は実験的な機能です。Codexのバージョンによって、仕様が変わったり利用できなかったりする可能性があります。選択肢のラベルはCodexによってローカライズされる場合があります。選択肢を利用できない場合は、固定文による確認へ自動的に切り替わり、有効化には正確に `accept` と返信する必要があります。
 
 ## 使い方
 
@@ -97,8 +98,8 @@ Current reasoning effort: "high".
 Enable 使いすぎ防止モード for this run?
 ```
 
-- `accept` — 表示された条件で有効化
-- `deny` — 有効化せず、無効のままにする
+- 推奨選択肢（`有効化 (Recommended)`／`accept (Recommended)`）— 表示された条件で有効化
+- 拒否選択肢（`拒否`／`deny`）— 有効化せず、無効のままにする
 
 ## インストーラーの設定項目
 
@@ -162,6 +163,7 @@ PowerShell版とBash版のインストーラーを同梱しています。フッ
 ├── install.sh
 ├── uninstall.ps1
 ├── uninstall.sh
+├── CHANGELOG.md
 ├── README.md
 ├── README.en.md
 └── LICENSE
