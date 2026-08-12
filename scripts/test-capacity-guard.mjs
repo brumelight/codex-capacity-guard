@@ -119,7 +119,8 @@ function approvalPre(session, turn, effort, file, current, threshold) {
   });
 }
 
-function approvalPost(session, turn, effort, file, current, threshold, approval = "accept (Recommended)") {
+function approvalPost(session, turn, effort, file, current, threshold, approval = "accept (Recommended)", modelFacingString = false) {
+  const response = { answers: { capacity_guard_approval: { answers: [approval] } } };
   return run({
     hook_event_name: "PostToolUse",
     session_id: session,
@@ -127,7 +128,7 @@ function approvalPost(session, turn, effort, file, current, threshold, approval 
     transcript_path: file,
     tool_name: "request_user_input",
     tool_input: { questions: approvalQuestion(current, threshold, effort) },
-    tool_response: { answers: { capacity_guard_approval: { answers: [approval] } } },
+    tool_response: modelFacingString ? JSON.stringify(response) : response,
   });
 }
 
@@ -197,7 +198,7 @@ try {
   assert.match(bootstrap.output.hookSpecificOutput.additionalContext, /PENDING_APPROVAL; stop_threshold=0%/);
   const bootstrapApprovalFile = transcript("b0", "high");
   assert.equal(denied(approvalPre("bootstrap", "b0", "high", bootstrapApprovalFile, 64, 0)), false);
-  assert.match(approvalPost("bootstrap", "b0", "high", bootstrapApprovalFile, 64, 0).hookSpecificOutput.additionalContext, /ARMED/);
+  assert.match(approvalPost("bootstrap", "b0", "high", bootstrapApprovalFile, 64, 0, "accept (Recommended)", true).hookSpecificOutput.additionalContext, /ARMED/);
 
   writeQuotaSnapshot({ remaining: 64, resets_at: futureReset });
   const expiresBeforeApproval = requestActivation("expires-before-approval", "eba0", "high", undefined, "$capacity-guard");
