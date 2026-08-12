@@ -53,6 +53,22 @@ function transcript(turnId, effort = "high", quota = undefined) {
   return file;
 }
 
+function writeQuotaSnapshot(quota, capturedAt = new Date()) {
+  fs.writeFileSync(path.join(testRoot, "quota-latest.json"), `${JSON.stringify({
+    schema_version: 1,
+    captured_at: capturedAt.toISOString(),
+    source_session_id: "previous-session",
+    quota: {
+      remaining_percent: quota.remaining,
+      used_percent: 100 - quota.remaining,
+      window_minutes: quota.window ?? 10080,
+      resets_at: quota.resets_at,
+      limit_id: quota.limit_id ?? "codex",
+      observed_at: capturedAt.toISOString(),
+    },
+  }, null, 2)}\n`, "utf8");
+}
+
 function runRaw(raw, env = {}) {
   const result = spawnSync(process.execPath, [hook], {
     input: raw,
@@ -173,6 +189,38 @@ try {
 
   const missing = requestActivation("missing", "m0", "high", undefined, "残量30%まで使いすぎ防止モードで実行して");
   assert.match(missing.output.hookSpecificOutput.additionalContext, /current quota value is unavailable/);
+
+  const futureReset = Math.floor(Date.now() / 1000) + 3600;
+  writeQuotaSnapshot({ remaining: 64, resets_at: futureReset });
+  const bootstrap = requestActivation("bootstrap", "b0", "high", undefined, "[@capacity-guard](plugin://capacity-guard@personal)");
+  assert.match(bootstrap.output.hookSpecificOutput.additionalContext, /remaining_percent="64"/);
+  assert.match(bootstrap.output.hookSpecificOutput.additionalContext, /PENDING_APPROVAL; stop_threshold=0%/);
+  const bootstrapApprovalFile = transcript("b0", "high", { remaining: 64, resets_at: futureReset });
+  assert.equal(denied(approvalPre("bootstrap", "b0", "high", bootstrapApprovalFile, 64, 0)), false);
+  assert.match(approvalPost("bootstrap", "b0", "high", bootstrapApprovalFile, 64, 0).hookSpecificOutput.additionalContext, /ARMED/);
+
+  writeQuotaSnapshot({ remaining: 64, resets_at: futureReset }, new Date(Date.now() - (6 * 60_000)));
+  const staleBootstrap = requestActivation("stale-bootstrap", "sb0", "high", undefined, "$capacity-guard");
+  assert.match(staleBootstrap.output.hookSpecificOutput.additionalContext, /current quota value is unavailable/);
+
+  writeQuotaSnapshot({ remaining: 64, resets_at: futureReset });
+  const forgedFresh = JSON.parse(fs.readFileSync(path.join(testRoot, "quota-latest.json"), "utf8"));
+  forgedFresh.quota.observed_at = new Date(Date.now() - (6 * 60_000)).toISOString();
+  fs.writeFileSync(path.join(testRoot, "quota-latest.json"), `${JSON.stringify(forgedFresh, null, 2)}\n`, "utf8");
+  const staleObservation = requestActivation("stale-observation", "so0", "high", undefined, "$capacity-guard");
+  assert.match(staleObservation.output.hookSpecificOutput.additionalContext, /current quota value is unavailable/);
+
+  writeQuotaSnapshot({ remaining: 64, resets_at: futureReset, limit_id: "other" });
+  const wrongLimit = requestActivation("wrong-limit", "wl0", "high", undefined, "$capacity-guard");
+  assert.match(wrongLimit.output.hookSpecificOutput.additionalContext, /current quota value is unavailable/);
+
+  writeQuotaSnapshot({ remaining: 64, resets_at: futureReset, window: 0 });
+  const wrongWindow = requestActivation("wrong-window", "ww0", "high", undefined, "$capacity-guard");
+  assert.match(wrongWindow.output.hookSpecificOutput.additionalContext, /current quota value is unavailable/);
+
+  writeQuotaSnapshot({ remaining: 64, resets_at: Math.floor(Date.now() / 1000) - 1 });
+  const expiredReset = requestActivation("expired-reset", "er0", "high", undefined, "$capacity-guard");
+  assert.match(expiredReset.output.hookSpecificOutput.additionalContext, /current quota value is unavailable/);
 
   const mismatch = requestActivation("mismatch", "mm0", "high", { remaining: 70 }, "残量30%まで使いすぎ防止モードで実行して");
   assert.equal(denied(approvalPre("mismatch", "mm0", "high", mismatch.file, 70, 31)), true);

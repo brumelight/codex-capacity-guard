@@ -135,6 +135,7 @@ On macOS and Linux, the corresponding paths are `$HOME/plugins/capacity-guard/` 
 - Runs `codex plugin add capacity-guard@personal`
 - Stores runtime state and payload-free invocation/failure audit events under the Codex-provided `PLUGIN_DATA` directory
 - Fails closed for `PreToolUse` and activation requests on internal hook errors, and surfaces an unverifiable state for other events
+- On first-turn activation, validates a plugin-observed quota snapshot no older than five minutes and rechecks it against the current task immediately before approval
 
 ## Requirements
 

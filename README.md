@@ -137,6 +137,7 @@ macOS／Linuxでは、それぞれ `$HOME/plugins/capacity-guard/` と `$HOME/.a
 - `codex plugin add capacity-guard@personal` を実行
 - 実行時の状態と監査ログはCodexが提供する `PLUGIN_DATA` に保存（各hookの起動・失敗もpayloadを含めず記録）
 - hook内部エラー時は、`PreToolUse` と有効化要求をfail-closedで停止し、その他のイベントでも未検証状態を明示
+- 新規taskの初回有効化では、pluginが直近5分以内に観測したquota snapshotを検証して使用し、承認直前に現taskの値と再照合
 
 ## 必要環境
 
