@@ -5,8 +5,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$PLUGIN_ROOT/scripts/capacity-guard-hook.mjs\"",
-            "commandWindows": "node \"%PLUGIN_ROOT%\\scripts\\capacity-guard-hook.mjs\"",
+            "command": "node \"${PLUGIN_ROOT}/scripts/capacity-guard-hook.mjs\"",
+            "commandWindows": "node \"${PLUGIN_ROOT}\\scripts\\capacity-guard-hook.mjs\"",
             "timeout": 5
           }
         ]
@@ -18,8 +18,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$PLUGIN_ROOT/scripts/capacity-guard-hook.mjs\"",
-            "commandWindows": "node \"%PLUGIN_ROOT%\\scripts\\capacity-guard-hook.mjs\"",
+            "command": "node \"${PLUGIN_ROOT}/scripts/capacity-guard-hook.mjs\"",
+            "commandWindows": "node \"${PLUGIN_ROOT}\\scripts\\capacity-guard-hook.mjs\"",
             "timeout": 5,
             "statusMessage": "Capacity Guard checkpoint"
           }
@@ -32,8 +32,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$PLUGIN_ROOT/scripts/capacity-guard-hook.mjs\"",
-            "commandWindows": "node \"%PLUGIN_ROOT%\\scripts\\capacity-guard-hook.mjs\"",
+            "command": "node \"${PLUGIN_ROOT}/scripts/capacity-guard-hook.mjs\"",
+            "commandWindows": "node \"${PLUGIN_ROOT}\\scripts\\capacity-guard-hook.mjs\"",
             "timeout": 5
           }
         ]
@@ -44,8 +44,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$PLUGIN_ROOT/scripts/capacity-guard-hook.mjs\"",
-            "commandWindows": "node \"%PLUGIN_ROOT%\\scripts\\capacity-guard-hook.mjs\"",
+            "command": "node \"${PLUGIN_ROOT}/scripts/capacity-guard-hook.mjs\"",
+            "commandWindows": "node \"${PLUGIN_ROOT}\\scripts\\capacity-guard-hook.mjs\"",
             "timeout": 5
           }
         ]
@@ -56,8 +56,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$PLUGIN_ROOT/scripts/capacity-guard-hook.mjs\"",
-            "commandWindows": "node \"%PLUGIN_ROOT%\\scripts\\capacity-guard-hook.mjs\"",
+            "command": "node \"${PLUGIN_ROOT}/scripts/capacity-guard-hook.mjs\"",
+            "commandWindows": "node \"${PLUGIN_ROOT}\\scripts\\capacity-guard-hook.mjs\"",
             "timeout": 5
           }
         ]
@@ -68,8 +68,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$PLUGIN_ROOT/scripts/capacity-guard-hook.mjs\"",
-            "commandWindows": "node \"%PLUGIN_ROOT%\\scripts\\capacity-guard-hook.mjs\"",
+            "command": "node \"${PLUGIN_ROOT}/scripts/capacity-guard-hook.mjs\"",
+            "commandWindows": "node \"${PLUGIN_ROOT}\\scripts\\capacity-guard-hook.mjs\"",
             "timeout": 3
           }
         ]

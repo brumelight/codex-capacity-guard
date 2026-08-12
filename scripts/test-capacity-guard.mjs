@@ -8,7 +8,22 @@ import { spawnSync } from "node:child_process";
 
 const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), "capacity-guard-test-"));
 const hook = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/(.:)/, "$1")), "capacity-guard-hook.mjs");
+const pluginRoot = path.resolve(path.dirname(hook), "..");
 let sequence = 0;
+
+function validateHookCommands() {
+  const config = JSON.parse(fs.readFileSync(path.join(pluginRoot, "hooks", "hooks.json"), "utf8"));
+  const handlers = Object.values(config.hooks)
+    .flatMap((groups) => groups)
+    .flatMap((group) => group.hooks);
+
+  assert.equal(handlers.length, 6);
+  for (const handler of handlers) {
+    assert.equal(handler.command, 'node "${PLUGIN_ROOT}/scripts/capacity-guard-hook.mjs"');
+    assert.equal(handler.commandWindows, 'node "${PLUGIN_ROOT}\\scripts\\capacity-guard-hook.mjs"');
+    assert.doesNotMatch(handler.commandWindows, /%PLUGIN_ROOT%|\$env:PLUGIN_ROOT/);
+  }
+}
 
 function transcript(turnId, effort = "high", quota = undefined) {
   const records = [{
@@ -116,6 +131,8 @@ function pre(session, turn, file, tool = "Bash") {
 }
 
 try {
+  validateHookCommands();
+
   const explicit = requestActivation("explicit", "e0", "high", { remaining: 73 }, "残量30％まで使いすぎ防止モードで実行して");
   assert.match(explicit.output.hookSpecificOutput.additionalContext, /remaining_percent="73"/);
   assert.match(explicit.output.hookSpecificOutput.additionalContext, /stop_threshold=30%/);
