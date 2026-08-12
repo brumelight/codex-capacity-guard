@@ -253,7 +253,11 @@ function isGuardApprovalTool(input) {
 }
 
 function answerValues(input, id) {
-  const answer = input?.tool_response?.answers?.[id];
+  let response = input?.tool_response;
+  if (typeof response === "string") {
+    try { response = JSON.parse(response); } catch { response = {}; }
+  }
+  const answer = response?.answers?.[id];
   return Array.isArray(answer?.answers) ? answer.answers.map((value) => String(value).trim()) : [];
 }
 
