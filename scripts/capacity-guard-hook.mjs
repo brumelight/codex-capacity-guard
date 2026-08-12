@@ -404,8 +404,9 @@ function handleUserPrompt(input) {
 
 function handleApprovalPre(input, records) {
   const runtime = currentRuntime(records, input.turn_id, input.model);
-  const currentQuota = latestQuota(records);
-  if (currentQuota) persistQuotaSnapshot(currentQuota, input);
+  const observedQuota = latestQuota(records);
+  if (observedQuota) persistQuotaSnapshot(observedQuota, input);
+  const currentQuota = observedQuota ?? readBootstrapQuota();
   const approvalQuestion = input.tool_input.questions.find((question) => question?.id === APPROVAL_ID);
   const displayed = String(approvalQuestion?.question || "").toLowerCase();
   const result = withState(input.session_id, (state) => {
