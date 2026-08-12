@@ -210,6 +210,8 @@ function isAccepted(input) {
 
 function requestsCapacityGuard(prompt) {
   if (/\$capacity-guard/i.test(prompt)) return true;
+  if (/\[@capacity-guard\]\(plugin:\/\/capacity-guard@personal\)/i.test(prompt)) return true;
+  if (/(?:^|\s)@capacity-guard\b/i.test(prompt)) return true;
   if (/(?:使いすぎ防止モード.{0,24}(?:実行|有効|開始|オン|使って|やって)|(?:実行|有効|開始|オン).{0,24}使いすぎ防止モード)/i.test(prompt)) return true;
   return /(?:capacity\s*guard.{0,32}(?:enable|activate|start|run|use|実行|有効|開始)|(?:enable|activate|start|run|use|実行|有効|開始).{0,32}capacity\s*guard)/i.test(prompt);
 }
