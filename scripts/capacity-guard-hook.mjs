@@ -12,6 +12,8 @@ const DATA_DIR = process.env.CAPACITY_GUARD_DATA_DIR
 const MAX_TRANSCRIPT_BYTES = 4 * 1024 * 1024;
 const LOCK_WAIT_MS = 500;
 const LOCK_STALE_MS = 30_000;
+const QUOTA_SNAPSHOT_MAX_AGE_MS = 5 * 60_000;
+const QUOTA_SNAPSHOT_SCHEMA_VERSION = 1;
 const HOOK_IMPLEMENTATION_VERSION = 2;
 let rawInput = "";
 
@@ -191,6 +193,59 @@ function latestQuota(records) {
   return latest;
 }
 
+function quotaSnapshotPath() {
+  return path.join(DATA_DIR, "quota-latest.json");
+}
+
+function validQuota(quota) {
+  const remaining = Number(quota?.remaining_percent);
+  const used = Number(quota?.used_percent);
+  const windowMinutes = Number(quota?.window_minutes);
+  const resetsAt = Number(quota?.resets_at);
+  return quota?.limit_id === "codex"
+    && Number.isFinite(remaining) && remaining >= 0 && remaining <= 100
+    && Number.isFinite(used) && used >= 0 && used <= 100
+    && Math.abs((remaining + used) - 100) < 0.000001
+    && Number.isInteger(windowMinutes) && windowMinutes > 0
+    && Number.isFinite(resetsAt) && resetsAt > 0;
+}
+
+function persistQuotaSnapshot(quota, input) {
+  if (!validQuota(quota)) return;
+  const observedAt = Date.parse(quota.observed_at);
+  if (!Number.isFinite(observedAt)) return;
+  ensureDataDir();
+  const target = quotaSnapshotPath();
+  const temp = `${target}.${process.pid}.${Date.now()}.tmp`;
+  const snapshot = {
+    schema_version: QUOTA_SNAPSHOT_SCHEMA_VERSION,
+    captured_at: new Date(observedAt).toISOString(),
+    source_session_id: input.session_id ?? null,
+    quota,
+  };
+  fs.writeFileSync(temp, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
+  fs.renameSync(temp, target);
+}
+
+function readBootstrapQuota() {
+  try {
+    const snapshot = JSON.parse(fs.readFileSync(quotaSnapshotPath(), "utf8"));
+    if (snapshot?.schema_version !== QUOTA_SNAPSHOT_SCHEMA_VERSION) return null;
+    const capturedAt = Date.parse(snapshot.captured_at);
+    const observedAt = Date.parse(snapshot?.quota?.observed_at);
+    const now = Date.now();
+    if (!Number.isFinite(capturedAt) || capturedAt > now + 30_000 || now - capturedAt > QUOTA_SNAPSHOT_MAX_AGE_MS) return null;
+    if (!Number.isFinite(observedAt) || observedAt > now + 30_000 || now - observedAt > QUOTA_SNAPSHOT_MAX_AGE_MS) return null;
+    if (Math.abs(capturedAt - observedAt) > 1000) return null;
+    if (!validQuota(snapshot.quota)) return null;
+    if (Number(snapshot.quota.resets_at) * 1000 <= now) return null;
+    return snapshot.quota;
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
 function isGuardApprovalTool(input) {
   if (String(input.tool_name || "").toLowerCase() !== "request_user_input") return false;
   return Array.isArray(input?.tool_input?.questions)
@@ -280,7 +335,9 @@ function runtimeContext(runtime, quota, status) {
 function handleUserPrompt(input) {
   const records = readTranscriptRecords(input.transcript_path);
   const runtime = currentRuntime(records, input.turn_id, input.model);
-  const quota = latestQuota(records);
+  const observedQuota = latestQuota(records);
+  if (observedQuota) persistQuotaSnapshot(observedQuota, input);
+  const quota = observedQuota ?? readBootstrapQuota();
   const prompt = String(input.prompt || "").trim();
   const activationRequested = requestsCapacityGuard(prompt);
   const threshold = requestedThreshold(prompt);
@@ -348,6 +405,7 @@ function handleUserPrompt(input) {
 function handleApprovalPre(input, records) {
   const runtime = currentRuntime(records, input.turn_id, input.model);
   const currentQuota = latestQuota(records);
+  if (currentQuota) persistQuotaSnapshot(currentQuota, input);
   const approvalQuestion = input.tool_input.questions.find((question) => question?.id === APPROVAL_ID);
   const displayed = String(approvalQuestion?.question || "").toLowerCase();
   const result = withState(input.session_id, (state) => {
@@ -412,6 +470,8 @@ function handleApprovalPost(input) {
 
 function handlePreTool(input) {
   const records = readTranscriptRecords(input.transcript_path);
+  const observedQuota = latestQuota(records);
+  if (observedQuota) persistQuotaSnapshot(observedQuota, input);
   if (isGuardApprovalTool(input)) return handleApprovalPre(input, records);
 
   const result = withState(input.session_id, (state) => {
@@ -419,7 +479,7 @@ function handlePreTool(input) {
     if (state.status !== "ARMED") return { action: "allow_off" };
 
     const runtime = currentRuntime(records, input.turn_id, input.model);
-    const current = latestQuota(records);
+    const current = observedQuota;
     if (!current) {
       const missing = Number(state.missing_checkpoints || 0) + 1;
       const next = { ...state, runtime, missing_checkpoints: missing };
