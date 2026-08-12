@@ -195,9 +195,15 @@ try {
   const bootstrap = requestActivation("bootstrap", "b0", "high", undefined, "[@capacity-guard](plugin://capacity-guard@personal)");
   assert.match(bootstrap.output.hookSpecificOutput.additionalContext, /remaining_percent="64"/);
   assert.match(bootstrap.output.hookSpecificOutput.additionalContext, /PENDING_APPROVAL; stop_threshold=0%/);
-  const bootstrapApprovalFile = transcript("b0", "high", { remaining: 64, resets_at: futureReset });
+  const bootstrapApprovalFile = transcript("b0", "high");
   assert.equal(denied(approvalPre("bootstrap", "b0", "high", bootstrapApprovalFile, 64, 0)), false);
   assert.match(approvalPost("bootstrap", "b0", "high", bootstrapApprovalFile, 64, 0).hookSpecificOutput.additionalContext, /ARMED/);
+
+  writeQuotaSnapshot({ remaining: 64, resets_at: futureReset });
+  const expiresBeforeApproval = requestActivation("expires-before-approval", "eba0", "high", undefined, "$capacity-guard");
+  assert.match(expiresBeforeApproval.output.hookSpecificOutput.additionalContext, /PENDING_APPROVAL/);
+  writeQuotaSnapshot({ remaining: 64, resets_at: futureReset }, new Date(Date.now() - (6 * 60_000)));
+  assert.equal(denied(approvalPre("expires-before-approval", "eba0", "high", transcript("eba0", "high"), 64, 0)), true);
 
   writeQuotaSnapshot({ remaining: 64, resets_at: futureReset }, new Date(Date.now() - (6 * 60_000)));
   const staleBootstrap = requestActivation("stale-bootstrap", "sb0", "high", undefined, "$capacity-guard");
