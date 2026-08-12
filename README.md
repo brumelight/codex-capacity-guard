@@ -144,7 +144,7 @@ macOS／Linuxでは、それぞれ `$HOME/plugins/capacity-guard/` と `$HOME/.a
 - プラグインとフックに対応したCodex CLI／Codexアプリ
 - Git（リポジトリを複製して導入する場合）
 
-PowerShell版とBash版のインストーラーを同梱しています。フック用コマンドはWindowsの `%PLUGIN_ROOT%` と、macOS／Linuxの `$PLUGIN_ROOT` に対応しています。
+PowerShell版とBash版のインストーラーを同梱しています。フック用コマンドは、シェル固有の環境変数構文ではなく、Codexが実行前に展開する `${PLUGIN_ROOT}` プレースホルダーを使用します。
 
 ## プロジェクト構成
 

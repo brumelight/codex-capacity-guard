@@ -142,7 +142,7 @@ On macOS and Linux, the corresponding paths are `$HOME/plugins/capacity-guard/` 
 - A Codex CLI or Codex app version with plugin and Hooks support
 - Git when installing by clone
 
-Both PowerShell and Bash installers are included. The hook command supports `%PLUGIN_ROOT%` on Windows and `$PLUGIN_ROOT` on POSIX systems.
+Both PowerShell and Bash installers are included. Hook commands use the `${PLUGIN_ROOT}` placeholder expanded by Codex before execution instead of shell-specific environment-variable syntax.
 
 ## Project Structure
 
