@@ -87,10 +87,11 @@ function denied(output) {
   return output?.hookSpecificOutput?.permissionDecision === "deny";
 }
 
-function approvalQuestion(current, threshold, effort) {
+function approvalQuestion(current, threshold, effort, optionLabels = ["accept (Recommended)", "deny"]) {
   return [{
     id: "capacity_guard_approval",
     question: `Current quota remaining: "${current}%". Stop threshold: "${threshold}%". Current reasoning effort: "${effort}". Enable 使いすぎ防止モード for this run?`,
+    options: optionLabels.map((label) => ({ label, description: label })),
   }];
 }
 
@@ -119,7 +120,7 @@ function approvalPre(session, turn, effort, file, current, threshold) {
   });
 }
 
-function approvalPost(session, turn, effort, file, current, threshold, approval = "accept (Recommended)", modelFacingString = false) {
+function approvalPost(session, turn, effort, file, current, threshold, approval = "accept (Recommended)", modelFacingString = false, optionLabels) {
   const response = { answers: { capacity_guard_approval: { answers: [approval] } } };
   return run({
     hook_event_name: "PostToolUse",
@@ -127,7 +128,7 @@ function approvalPost(session, turn, effort, file, current, threshold, approval 
     turn_id: turn,
     transcript_path: file,
     tool_name: "request_user_input",
-    tool_input: { questions: approvalQuestion(current, threshold, effort) },
+    tool_input: { questions: approvalQuestion(current, threshold, effort, optionLabels) },
     tool_response: modelFacingString ? JSON.stringify(response) : response,
   });
 }
@@ -199,6 +200,22 @@ try {
   const bootstrapApprovalFile = transcript("b0", "high");
   assert.equal(denied(approvalPre("bootstrap", "b0", "high", bootstrapApprovalFile, 64, 0)), false);
   assert.match(approvalPost("bootstrap", "b0", "high", bootstrapApprovalFile, 64, 0, "accept (Recommended)", true).hookSpecificOutput.additionalContext, /ARMED/);
+
+  const localized = requestActivation("localized-approval", "la0", "high", { remaining: 53 }, "[@capacity-guard](plugin://capacity-guard@personal) 動作確認");
+  assert.equal(denied(approvalPre("localized-approval", "la0", "high", localized.file, 53, 0)), false);
+  const localizedLabels = ["有効化 (Recommended)", "拒否"];
+  const localizedResult = approvalPost("localized-approval", "la0", "high", localized.file, 53, 0, "有効化 (Recommended)", true, localizedLabels);
+  assert.match(localizedResult.hookSpecificOutput.additionalContext, /ARMED/);
+
+  const localizedDeny = requestActivation("localized-deny", "ld0", "high", { remaining: 53 }, "$capacity-guard");
+  approvalPre("localized-deny", "ld0", "high", localizedDeny.file, 53, 0);
+  const localizedDenyResult = approvalPost("localized-deny", "ld0", "high", localizedDeny.file, 53, 0, "拒否", true, localizedLabels);
+  assert.match(localizedDenyResult.hookSpecificOutput.additionalContext, /remains OFF/);
+
+  const unlistedRecommended = requestActivation("unlisted-recommended", "ur0", "high", { remaining: 53 }, "$capacity-guard");
+  approvalPre("unlisted-recommended", "ur0", "high", unlistedRecommended.file, 53, 0);
+  const unlistedResult = approvalPost("unlisted-recommended", "ur0", "high", unlistedRecommended.file, 53, 0, "危険 (Recommended)", true, localizedLabels);
+  assert.match(unlistedResult.hookSpecificOutput.additionalContext, /remains OFF/);
 
   writeQuotaSnapshot({ remaining: 64, resets_at: futureReset });
   const expiresBeforeApproval = requestActivation("expires-before-approval", "eba0", "high", undefined, "$capacity-guard");

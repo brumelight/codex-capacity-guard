@@ -261,10 +261,22 @@ function answerValues(input, id) {
   return Array.isArray(answer?.answers) ? answer.answers.map((value) => String(value).trim()) : [];
 }
 
+function recommendedApprovalLabel(input) {
+  const labels = (input?.tool_input?.questions ?? [])
+    .filter((question) => question?.id === APPROVAL_ID)
+    .flatMap((question) => Array.isArray(question?.options) ? question.options : [])
+    .map((option) => String(option?.label ?? "").trim())
+    .filter((label) => /\(\s*recommended\s*\)\s*$/i.test(label));
+  return labels.length === 1 ? labels[0] : null;
+}
+
 function isAccepted(input) {
-  return answerValues(input, APPROVAL_ID)
+  const answers = answerValues(input, APPROVAL_ID);
+  if (answers
     .map((value) => value.toLowerCase())
-    .some((value) => value === "accept" || value === "accept (recommended)");
+    .some((value) => value === "accept" || value === "accept (recommended)")) return true;
+  const recommended = recommendedApprovalLabel(input);
+  return recommended !== null && answers.some((value) => value === recommended);
 }
 
 function requestsCapacityGuard(prompt) {
