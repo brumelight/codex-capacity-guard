@@ -11,10 +11,13 @@ const DATA_DIR = process.env.CAPACITY_GUARD_DATA_DIR
   || path.join(os.homedir(), ".codex", "plugin-data", "capacity-guard");
 const MAX_TRANSCRIPT_BYTES = 4 * 1024 * 1024;
 const LOCK_WAIT_MS = 500;
+const LOCK_STALE_MS = 30_000;
+const HOOK_IMPLEMENTATION_VERSION = 2;
+let rawInput = "";
 
 function readInput() {
-  const raw = fs.readFileSync(0, "utf8");
-  return raw.trim() ? JSON.parse(raw) : {};
+  rawInput = fs.readFileSync(0, "utf8");
+  return rawInput.trim() ? JSON.parse(rawInput) : {};
 }
 
 function emit(value = {}) {
@@ -60,6 +63,18 @@ function waitBriefly(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+function reclaimStaleLock(lockPath) {
+  try {
+    const age = Date.now() - fs.statSync(lockPath).mtimeMs;
+    if (age <= LOCK_STALE_MS) return false;
+    fs.rmSync(lockPath);
+    return true;
+  } catch (error) {
+    if (error?.code === "ENOENT") return true;
+    throw error;
+  }
+}
+
 function withState(sessionId, update) {
   ensureDataDir();
   const lockPath = `${statePath(sessionId)}.lock`;
@@ -69,11 +84,14 @@ function withState(sessionId, update) {
     try {
       fd = fs.openSync(lockPath, "wx");
     } catch (error) {
-      if (error?.code !== "EEXIST" || Date.now() >= deadline) throw error;
+      if (error?.code !== "EEXIST") throw error;
+      if (reclaimStaleLock(lockPath)) continue;
+      if (Date.now() >= deadline) throw error;
       waitBriefly(10);
     }
   }
   try {
+    fs.writeFileSync(fd, `${JSON.stringify({ pid: process.pid, created_at: new Date().toISOString() })}\n`, "utf8");
     const current = readStateUnlocked(sessionId);
     const result = update(current) || {};
     const state = result.state ? writeStateUnlocked(sessionId, result.state) : current;
@@ -87,6 +105,33 @@ function withState(sessionId, update) {
 function appendAudit(event) {
   ensureDataDir();
   fs.appendFileSync(path.join(DATA_DIR, "events.jsonl"), `${JSON.stringify({ timestamp: new Date().toISOString(), ...event })}\n`, "utf8");
+}
+
+function auditInvocation(input) {
+  appendAudit({
+    event: "invoked",
+    hook_event_name: input.hook_event_name ?? "unknown",
+    session_id: input.session_id ?? "unknown",
+    turn_id: input.turn_id ?? null,
+    pid: process.pid,
+    implementation_version: HOOK_IMPLEMENTATION_VERSION,
+    source: process.env.PLUGIN_ROOT ? "plugin" : "direct",
+  });
+}
+
+function auditFailure(input, error) {
+  try {
+    appendAudit({
+      event: "failed",
+      hook_event_name: input.hook_event_name ?? "unknown",
+      session_id: input.session_id ?? "unknown",
+      turn_id: input.turn_id ?? null,
+      pid: process.pid,
+      implementation_version: HOOK_IMPLEMENTATION_VERSION,
+      error_name: error?.name ?? "Error",
+      error_code: error?.code ?? null,
+    });
+  } catch {}
 }
 
 function readTranscriptRecords(transcriptPath) {
@@ -447,9 +492,49 @@ function handleSessionEnd(input) {
   emit({});
 }
 
+function recoverInputMetadata(raw) {
+  const value = (key) => {
+    const match = raw.match(new RegExp(`"${key}"\\s*:\\s*"([^"\\\\]*(?:\\\\.[^"\\\\]*)*)"`, "i"));
+    if (!match) return undefined;
+    try { return JSON.parse(`"${match[1]}"`); } catch { return match[1]; }
+  };
+  return {
+    hook_event_name: value("hook_event_name"),
+    session_id: value("session_id"),
+    turn_id: value("turn_id"),
+    prompt: value("prompt"),
+  };
+}
+
+function emitFailure(input) {
+  const message = "Capacity Guard hook failed internally, so its protection state could not be verified.";
+  if (input.hook_event_name === "PreToolUse") {
+    emit(deny(`${message} New tool execution is stopped.`));
+    return;
+  }
+  if (input.hook_event_name === "UserPromptSubmit") {
+    if (requestsCapacityGuard(String(input.prompt || ""))) {
+      emit({
+        continue: false,
+        stopReason: `${message} Activation was stopped before task work began.`,
+        systemMessage: `${message} Capacity Guard was not enabled; retry after resolving the hook failure.`,
+      });
+      return;
+    }
+    emit({ systemMessage: `${message} Do not assume Capacity Guard is active.` });
+    return;
+  }
+  if (input.hook_event_name === "Stop" || input.hook_event_name === "SubagentStop") {
+    emit({ continue: false, stopReason: `${message} Automatic continuation is stopped.` });
+    return;
+  }
+  emit({ systemMessage: `${message} Capacity Guard remains OFF.` });
+}
+
 let hookInput = {};
 try {
   hookInput = readInput();
+  auditInvocation(hookInput);
   switch (hookInput.hook_event_name) {
     case "UserPromptSubmit": handleUserPrompt(hookInput); break;
     case "PreToolUse": handlePreTool(hookInput); break;
@@ -460,8 +545,8 @@ try {
     default: emit({});
   }
 } catch (error) {
+  if (!hookInput.hook_event_name && rawInput) hookInput = { ...hookInput, ...recoverInputMetadata(rawInput) };
   process.stderr.write(`capacity-guard hook error: ${error?.stack || error}\n`);
-  if (hookInput.hook_event_name === "PreToolUse") {
-    emit(deny("Capacity Guard hook failed internally, so safety could not be verified. New tool execution is stopped."));
-  } else emit({});
+  auditFailure(hookInput, error);
+  emitFailure(hookInput);
 }
