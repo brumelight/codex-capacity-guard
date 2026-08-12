@@ -53,14 +53,18 @@ function transcript(turnId, effort = "high", quota = undefined) {
   return file;
 }
 
-function run(input) {
+function runRaw(raw, env = {}) {
   const result = spawnSync(process.execPath, [hook], {
-    input: JSON.stringify(input),
+    input: raw,
     encoding: "utf8",
-    env: { ...process.env, CAPACITY_GUARD_DATA_DIR: testRoot },
+    env: { ...process.env, CAPACITY_GUARD_DATA_DIR: testRoot, ...env },
   });
   assert.equal(result.status, 0, result.stderr);
   return JSON.parse(result.stdout.trim());
+}
+
+function run(input, env = {}) {
+  return runRaw(JSON.stringify(input), env);
 }
 
 function denied(output) {
@@ -205,6 +209,42 @@ try {
     prompt: "accept",
   });
   assert.match(fallbackArm.hookSpecificOutput.additionalContext, /ARMED/);
+
+  const malformedActivation = runRaw('{"hook_event_name":"UserPromptSubmit","session_id":"malformed","prompt":"$capacity-guard",}');
+  assert.equal(malformedActivation.continue, false);
+  assert.match(malformedActivation.systemMessage, /not enabled/);
+
+  const invalidDataDir = path.join(testRoot, "not-a-directory");
+  fs.writeFileSync(invalidDataDir, "fixture", "utf8");
+  const ioFailure = run({
+    hook_event_name: "UserPromptSubmit",
+    session_id: "io-failure",
+    turn_id: "io0",
+    transcript_path: transcript("io0", "high", { remaining: 70 }),
+    prompt: "$capacity-guard",
+  }, { CAPACITY_GUARD_DATA_DIR: invalidDataDir });
+  assert.equal(ioFailure.continue, false);
+  assert.match(ioFailure.systemMessage, /not enabled/);
+
+  const lockedSession = "fresh-lock";
+  fs.writeFileSync(path.join(testRoot, `${lockedSession}.json.lock`), "fixture", "utf8");
+  const lockFailure = pre(lockedSession, "lock0", transcript("lock0", "high", { remaining: 70 }));
+  assert.equal(denied(lockFailure), true);
+  assert.match(lockFailure.hookSpecificOutput.permissionDecisionReason, /failed internally/);
+
+  const staleSession = "stale-lock";
+  const stalePath = path.join(testRoot, `${staleSession}.json.lock`);
+  fs.writeFileSync(stalePath, "fixture", "utf8");
+  const staleTime = new Date(Date.now() - 60_000);
+  fs.utimesSync(stalePath, staleTime, staleTime);
+  const staleRecovery = requestActivation(staleSession, "stale0", "high", { remaining: 70 }, "$capacity-guard");
+  assert.match(staleRecovery.output.hookSpecificOutput.additionalContext, /PENDING_APPROVAL/);
+  assert.equal(fs.existsSync(stalePath), false);
+
+  const auditEvents = fs.readFileSync(path.join(testRoot, "events.jsonl"), "utf8")
+    .trim().split(/\r?\n/).map((line) => JSON.parse(line));
+  assert.ok(auditEvents.some((event) => event.event === "invoked" && event.hook_event_name === "UserPromptSubmit"));
+  assert.ok(auditEvents.some((event) => event.event === "failed" && event.session_id === "malformed"));
 
   process.stdout.write("capacity-guard tests: PASS\n");
 } finally {

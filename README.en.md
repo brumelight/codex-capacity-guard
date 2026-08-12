@@ -133,7 +133,8 @@ On macOS and Linux, the corresponding paths are `$HOME/plugins/capacity-guard/` 
 - Moves an existing destination to `capacity-guard.backup.<UTC timestamp>` before copying
 - Adds or updates `capacity-guard` in the personal marketplace
 - Runs `codex plugin add capacity-guard@personal`
-- Stores runtime state and audit logs under the Codex-provided `PLUGIN_DATA` directory
+- Stores runtime state and payload-free invocation/failure audit events under the Codex-provided `PLUGIN_DATA` directory
+- Fails closed for `PreToolUse` and activation requests on internal hook errors, and surfaces an unverifiable state for other events
 
 ## Requirements
 

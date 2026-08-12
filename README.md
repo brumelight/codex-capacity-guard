@@ -135,7 +135,8 @@ macOS／Linuxでは、それぞれ `$HOME/plugins/capacity-guard/` と `$HOME/.a
 - 既存の配置先がある場合、`capacity-guard.backup.<UTC時刻>` へ移動してからコピー
 - 個人用マーケットプレイスに `capacity-guard` を登録または更新
 - `codex plugin add capacity-guard@personal` を実行
-- 実行時の状態と監査ログはCodexが提供する `PLUGIN_DATA` に保存
+- 実行時の状態と監査ログはCodexが提供する `PLUGIN_DATA` に保存（各hookの起動・失敗もpayloadを含めず記録）
+- hook内部エラー時は、`PreToolUse` と有効化要求をfail-closedで停止し、その他のイベントでも未検証状態を明示
 
 ## 必要環境
 
