@@ -8,6 +8,7 @@ It confirms the current quota and stop threshold before activation and prevents 
 
 [日本語](README.md)
 
+[![Latest release](https://img.shields.io/github/v/release/brumelight/codex-capacity-guard?display_name=tag&sort=semver)](https://github.com/brumelight/codex-capacity-guard/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-informational)](LICENSE)
 
 </div>
@@ -23,7 +24,7 @@ When the accepted remaining-quota threshold, a recovery to 100%, or an observati
 ## Features
 
 - **1% threshold increments** — Accept any whole remaining-quota percentage from 0% to 100%
-- **Pre-activation confirmation** — Display the current quota, stop threshold, and reasoning effort before requiring `accept`
+- **Pre-activation confirmation** — Display the current quota, stop threshold, and reasoning effort before requiring an explicit recommended-option approval
 - **Reset detection** — Detect recovery from below 100% to 100% in the same quota window
 - **Observation failure stop** — Stop after two consecutive checkpoints without a usable snapshot
 - **Task-tree-wide state** — Share one stop state across the root, children, and grandchildren
@@ -53,11 +54,11 @@ Restart Codex, open a new task, and enter:
 Run this task with Capacity Guard until 30% quota remains.
 ```
 
-Review the displayed current quota, stop threshold, and reasoning effort, then select `accept` to enable the guard.
+Review the displayed current quota, stop threshold, and reasoning effort, then select the recommended option (`accept (Recommended)`, or its host-localized label) to enable the guard.
 
 ### Enable choice-based confirmation (experimental)
 
-To show `accept` / `deny` choices in default mode, add the following to your personal `~/.codex/config.toml`:
+To show enable / deny choices in default mode, add the following to your personal `~/.codex/config.toml`:
 
 ```toml
 [features]
@@ -66,7 +67,7 @@ default_mode_request_user_input = true
 
 If `[features]` already exists, add only `default_mode_request_user_input = true` under the existing table instead of declaring it again. Restart Codex and open a new task after changing the setting.
 
-This is an experimental feature. Its availability and behavior may change between Codex versions. When choice-based input is unavailable, Capacity Guard automatically falls back to a fixed-text confirmation that requires an exact `accept` reply.
+This is an experimental feature. Its availability and behavior may change between Codex versions, and Codex may localize the option labels. When choice-based input is unavailable, Capacity Guard automatically falls back to a fixed-text confirmation that requires an exact `accept` reply.
 
 ## Usage
 
@@ -95,8 +96,8 @@ Current reasoning effort: "high".
 Enable Capacity Guard for this run?
 ```
 
-- `accept` — Enable the guard with the displayed values
-- `deny` — Keep the guard OFF
+- Recommended option (`accept (Recommended)`, or its host-localized label) — Enable the guard with the displayed values
+- Deny option (`deny`, or its host-localized label) — Keep the guard OFF
 
 ## Installer Options
 
@@ -160,6 +161,7 @@ Both PowerShell and Bash installers are included. Hook commands use the `${PLUGI
 ├── install.sh
 ├── uninstall.ps1
 ├── uninstall.sh
+├── CHANGELOG.md
 ├── README.md
 ├── README.en.md
 └── LICENSE
