@@ -141,6 +141,18 @@ try {
   assert.match(explicit.output.hookSpecificOutput.additionalContext, /remaining_percent="73"/);
   assert.match(explicit.output.hookSpecificOutput.additionalContext, /stop_threshold=30%/);
 
+  const dollarMention = requestActivation("dollar-mention", "dm0", "high", { remaining: 73 }, "$capacity-guard hook不具合検証");
+  assert.match(dollarMention.output.hookSpecificOutput.additionalContext, /PENDING_APPROVAL; stop_threshold=0%/);
+
+  const atMention = requestActivation("at-mention", "am0", "high", { remaining: 73 }, "@capacity-guard hook不具合検証");
+  assert.match(atMention.output.hookSpecificOutput.additionalContext, /PENDING_APPROVAL; stop_threshold=0%/);
+
+  const desktopMention = requestActivation("desktop-mention", "pm0", "high", { remaining: 73 }, "[@capacity-guard](plugin://capacity-guard@personal) hook不具合検証");
+  assert.match(desktopMention.output.hookSpecificOutput.additionalContext, /PENDING_APPROVAL; stop_threshold=0%/);
+
+  const rawPluginUri = requestActivation("raw-plugin-uri", "pu0", "high", { remaining: 73 }, "plugin://capacity-guard@personal というURIは何？");
+  assert.doesNotMatch(rawPluginUri.output.hookSpecificOutput.additionalContext, /PENDING_APPROVAL/);
+
   const onePercent = requestActivation("one-percent", "o0", "medium", { remaining: 62 }, "残量37%までCapacity Guardで実行");
   assert.match(onePercent.output.hookSpecificOutput.additionalContext, /stop_threshold=37%/);
 
