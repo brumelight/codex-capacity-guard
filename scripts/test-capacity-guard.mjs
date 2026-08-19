@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), "capacity-guard-test-"));
 const hook = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/(.:)/, "$1")), "capacity-guard-hook.mjs");
@@ -26,6 +26,7 @@ function validateHookCommands() {
 }
 
 function transcript(turnId, effort = "high", quota = undefined) {
+  const observedAt = quota?.observed_at ?? new Date().toISOString();
   const records = [{
     timestamp: new Date().toISOString(),
     type: "turn_context",
@@ -33,7 +34,7 @@ function transcript(turnId, effort = "high", quota = undefined) {
   }];
   if (quota) {
     records.push({
-      timestamp: new Date().toISOString(),
+      timestamp: observedAt,
       type: "event_msg",
       payload: {
         type: "token_count",
@@ -81,6 +82,32 @@ function runRaw(raw, env = {}) {
 
 function run(input, env = {}) {
   return runRaw(JSON.stringify(input), env);
+}
+
+function runRawAsync(raw, env = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [hook], {
+      encoding: "utf8",
+      env: { ...process.env, CAPACITY_GUARD_DATA_DIR: testRoot, ...env },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.on("error", reject);
+    child.on("close", (status) => {
+      if (status !== 0) return reject(new Error(stderr || `hook exited ${status}`));
+      try { return resolve(JSON.parse(stdout.trim())); } catch (error) { return reject(error); }
+    });
+    child.stdin.end(raw);
+  });
+}
+
+function runAsync(input, env = {}) {
+  return runRawAsync(JSON.stringify(input), env);
 }
 
 function denied(output) {
@@ -155,6 +182,29 @@ function pre(session, turn, file, tool = "Bash") {
 try {
   validateHookCommands();
 
+  const concurrentBase = Date.now() - 1000;
+  const concurrentRuns = Array.from({ length: 20 }, (_, index) => {
+    const turn = `concurrent-turn-${index}`;
+    const file = transcript(turn, "high", {
+      remaining: 80 - index,
+      resets_at: Math.floor(Date.now() / 1000) + 3600,
+      observed_at: new Date(concurrentBase + (index * 10)).toISOString(),
+    });
+    return runAsync({
+      hook_event_name: "PreToolUse",
+      session_id: `concurrent-session-${index}`,
+      turn_id: turn,
+      transcript_path: file,
+      model: "gpt-test",
+      tool_name: "Bash",
+    });
+  });
+  const concurrentOutputs = await Promise.all(concurrentRuns);
+  assert.ok(concurrentOutputs.every((output) => !denied(output)));
+  const concurrentSnapshot = JSON.parse(fs.readFileSync(path.join(testRoot, "quota-latest.json"), "utf8"));
+  assert.equal(concurrentSnapshot.quota.remaining_percent, 61);
+  assert.deepEqual(fs.readdirSync(testRoot).filter((name) => /^quota-latest\.json\..+\.tmp$/.test(name)), []);
+
   const explicit = requestActivation("explicit", "e0", "high", { remaining: 73 }, "残量30％まで使いすぎ防止モードで実行して");
   assert.match(explicit.output.hookSpecificOutput.additionalContext, /remaining_percent="73"/);
   assert.match(explicit.output.hookSpecificOutput.additionalContext, /stop_threshold=30%/);
@@ -168,8 +218,26 @@ try {
   const desktopMention = requestActivation("desktop-mention", "pm0", "high", { remaining: 73 }, "[@capacity-guard](plugin://capacity-guard@personal) hook不具合検証");
   assert.match(desktopMention.output.hookSpecificOutput.additionalContext, /PENDING_APPROVAL; stop_threshold=0%/);
 
+  const localizedDesktopMention = requestActivation("localized-desktop-mention", "lpm0", "high", { remaining: 73 }, "[@使いすぎ防止モード](plugin://capacity-guard@personal/) 5%");
+  assert.match(localizedDesktopMention.output.hookSpecificOutput.additionalContext, /PENDING_APPROVAL; stop_threshold=5%/);
+
+  const slashDesktopMention = requestActivation("slash-desktop-mention", "spm0", "high", { remaining: 73 }, "[@capacity-guard](plugin://capacity-guard@personal/) 5%");
+  assert.match(slashDesktopMention.output.hookSpecificOutput.additionalContext, /PENDING_APPROVAL; stop_threshold=5%/);
+
+  const localizedNoSlashMention = requestActivation("localized-no-slash", "lns0", "high", { remaining: 73 }, "[@使いすぎ防止モード](plugin://capacity-guard@personal) 5%");
+  assert.match(localizedNoSlashMention.output.hookSpecificOutput.additionalContext, /PENDING_APPROVAL; stop_threshold=5%/);
+
   const rawPluginUri = requestActivation("raw-plugin-uri", "pu0", "high", { remaining: 73 }, "plugin://capacity-guard@personal というURIは何？");
   assert.doesNotMatch(rawPluginUri.output.hookSpecificOutput.additionalContext, /PENDING_APPROVAL/);
+
+  const rawPluginUriSlash = requestActivation("raw-plugin-uri-slash", "pus0", "high", { remaining: 73 }, "plugin://capacity-guard@personal/ というURIは何？");
+  assert.doesNotMatch(rawPluginUriSlash.output.hookSpecificOutput.additionalContext, /PENDING_APPROVAL/);
+
+  const wrongPluginMention = requestActivation("wrong-plugin-mention", "wpm0", "high", { remaining: 73 }, "[@使いすぎ防止モード](plugin://other@personal/) 5%");
+  assert.doesNotMatch(wrongPluginMention.output.hookSpecificOutput.additionalContext, /PENDING_APPROVAL/);
+
+  const wrongMarketplaceMention = requestActivation("wrong-marketplace-mention", "wmm0", "high", { remaining: 73 }, "[@使いすぎ防止モード](plugin://capacity-guard@other/) 5%");
+  assert.doesNotMatch(wrongMarketplaceMention.output.hookSpecificOutput.additionalContext, /PENDING_APPROVAL/);
 
   const onePercent = requestActivation("one-percent", "o0", "medium", { remaining: 62 }, "残量37%までCapacity Guardで実行");
   assert.match(onePercent.output.hookSpecificOutput.additionalContext, /stop_threshold=37%/);
@@ -200,6 +268,8 @@ try {
   const bootstrapApprovalFile = transcript("b0", "high");
   assert.equal(denied(approvalPre("bootstrap", "b0", "high", bootstrapApprovalFile, 64, 0)), false);
   assert.match(approvalPost("bootstrap", "b0", "high", bootstrapApprovalFile, 64, 0, "accept (Recommended)", true).hookSpecificOutput.additionalContext, /ARMED/);
+  assert.equal(denied(pre("bootstrap", "b1", transcript("b1", "high"), "codex_appcreate_thread")), false);
+  assert.equal(denied(pre("bootstrap", "b2", transcript("b2", "high"), "Bash")), false);
 
   const localized = requestActivation("localized-approval", "la0", "high", { remaining: 53 }, "[@capacity-guard](plugin://capacity-guard@personal) 動作確認");
   assert.equal(denied(approvalPre("localized-approval", "la0", "high", localized.file, 53, 0)), false);
@@ -263,9 +333,16 @@ try {
   assert.equal(run({ hook_event_name: "SubagentStop", session_id: "reset" }).continue, false);
 
   arm("observation", "v0", "high", { remaining: 80 }, 0);
+  fs.rmSync(path.join(testRoot, "quota-latest.json"), { force: true });
   assert.equal(denied(pre("observation", "v1", transcript("v1", "high"))), false);
   const observationTrip = pre("observation", "v2", transcript("v2", "high"), "apply_patch");
   assert.match(observationTrip.hookSpecificOutput.permissionDecisionReason, /OBSERVATION_UNAVAILABLE/);
+
+  arm("expired-runtime", "x0", "high", { remaining: 80 }, 0);
+  writeQuotaSnapshot({ remaining: 80, resets_at: futureReset }, new Date(Date.now() - (6 * 60_000)));
+  assert.equal(denied(pre("expired-runtime", "x1", transcript("x1", "high"))), false);
+  const expiredRuntimeTrip = pre("expired-runtime", "x2", transcript("x2", "high"), "codex_appcreate_thread");
+  assert.match(expiredRuntimeTrip.hookSpecificOutput.permissionDecisionReason, /OBSERVATION_UNAVAILABLE/);
 
   arm("persist", "p0", "high", { remaining: 80 }, 0);
   assert.deepEqual(run({ hook_event_name: "Stop", session_id: "persist" }), {});
@@ -329,6 +406,7 @@ try {
     .trim().split(/\r?\n/).map((line) => JSON.parse(line));
   assert.ok(auditEvents.some((event) => event.event === "invoked" && event.hook_event_name === "UserPromptSubmit"));
   assert.ok(auditEvents.some((event) => event.event === "failed" && event.session_id === "malformed"));
+  assert.equal(auditEvents.some((event) => event.event === "failed" && String(event.session_id).startsWith("concurrent-session-")), false);
 
   process.stdout.write("capacity-guard tests: PASS\n");
 } finally {

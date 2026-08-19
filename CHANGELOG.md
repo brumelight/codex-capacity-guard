@@ -2,6 +2,20 @@
 
 All notable changes to Capacity Guard are documented in this file. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.2] - 2026-08-20
+
+### Fixed
+
+- Serialize global quota-snapshot updates across hook processes, keep the newest observation, and clean up failed atomic-write temp files.
+- Reuse a fresh validated quota snapshot during ARMED runtime checkpoints instead of incorrectly counting the observation as missing.
+- Recognize localized Desktop mention labels and the canonical plugin URI with or without its trailing slash.
+
+### Added
+
+- Concurrent 20-process quota-snapshot regression coverage, including newest-observation ordering and temp-file cleanup.
+- Runtime bootstrap, expired-snapshot, localized mention, and negative plugin-destination regression coverage.
+- Payload-free tool/transcript presence and filesystem failure metadata in hook audit events.
+
 ## [0.1.1] - 2026-08-13
 
 First formal GitHub release. This release supersedes the locally distributed `0.1.0+codex.20260809230926` build.
