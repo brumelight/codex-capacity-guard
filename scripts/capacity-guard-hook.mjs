@@ -14,7 +14,7 @@ const LOCK_WAIT_MS = 500;
 const LOCK_STALE_MS = 30_000;
 const QUOTA_SNAPSHOT_MAX_AGE_MS = 5 * 60_000;
 const QUOTA_SNAPSHOT_SCHEMA_VERSION = 1;
-const HOOK_IMPLEMENTATION_VERSION = 2;
+const HOOK_IMPLEMENTATION_VERSION = 3;
 let rawInput = "";
 
 function readInput() {
@@ -54,11 +54,19 @@ function readStateUnlocked(sessionId) {
 function writeStateUnlocked(sessionId, state) {
   ensureDataDir();
   const target = statePath(sessionId);
-  const temp = `${target}.${process.pid}.${Date.now()}.tmp`;
   const next = { ...state, session_id: sessionId, updated_at: new Date().toISOString() };
-  fs.writeFileSync(temp, `${JSON.stringify(next, null, 2)}\n`, "utf8");
-  fs.renameSync(temp, target);
+  writeJsonAtomic(target, next);
   return next;
+}
+
+function writeJsonAtomic(target, value) {
+  const temp = `${target}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    fs.writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+    fs.renameSync(temp, target);
+  } finally {
+    try { fs.rmSync(temp, { force: true }); } catch {}
+  }
 }
 
 function waitBriefly(ms) {
@@ -77,9 +85,7 @@ function reclaimStaleLock(lockPath) {
   }
 }
 
-function withState(sessionId, update) {
-  ensureDataDir();
-  const lockPath = `${statePath(sessionId)}.lock`;
+function withFileLock(lockPath, update) {
   const deadline = Date.now() + LOCK_WAIT_MS;
   let fd;
   while (fd === undefined) {
@@ -94,14 +100,20 @@ function withState(sessionId, update) {
   }
   try {
     fs.writeFileSync(fd, `${JSON.stringify({ pid: process.pid, created_at: new Date().toISOString() })}\n`, "utf8");
+    return update();
+  } finally {
+    try { fs.closeSync(fd); } finally { fs.rmSync(lockPath, { force: true }); }
+  }
+}
+
+function withState(sessionId, update) {
+  ensureDataDir();
+  return withFileLock(`${statePath(sessionId)}.lock`, () => {
     const current = readStateUnlocked(sessionId);
     const result = update(current) || {};
     const state = result.state ? writeStateUnlocked(sessionId, result.state) : current;
     return { ...result, state };
-  } finally {
-    fs.closeSync(fd);
-    fs.rmSync(lockPath, { force: true });
-  }
+  });
 }
 
 function appendAudit(event) {
@@ -115,6 +127,8 @@ function auditInvocation(input) {
     hook_event_name: input.hook_event_name ?? "unknown",
     session_id: input.session_id ?? "unknown",
     turn_id: input.turn_id ?? null,
+    tool_name: input.tool_name ?? null,
+    transcript_present: Boolean(input.transcript_path),
     pid: process.pid,
     implementation_version: HOOK_IMPLEMENTATION_VERSION,
     source: process.env.PLUGIN_ROOT ? "plugin" : "direct",
@@ -132,6 +146,9 @@ function auditFailure(input, error) {
       implementation_version: HOOK_IMPLEMENTATION_VERSION,
       error_name: error?.name ?? "Error",
       error_code: error?.code ?? null,
+      error_syscall: error?.syscall ?? null,
+      error_path_basename: error?.path ? path.basename(String(error.path)) : null,
+      error_dest_basename: error?.dest ? path.basename(String(error.dest)) : null,
     });
   } catch {}
 }
@@ -216,15 +233,23 @@ function persistQuotaSnapshot(quota, input) {
   if (!Number.isFinite(observedAt)) return;
   ensureDataDir();
   const target = quotaSnapshotPath();
-  const temp = `${target}.${process.pid}.${Date.now()}.tmp`;
   const snapshot = {
     schema_version: QUOTA_SNAPSHOT_SCHEMA_VERSION,
     captured_at: new Date(observedAt).toISOString(),
     source_session_id: input.session_id ?? null,
     quota,
   };
-  fs.writeFileSync(temp, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
-  fs.renameSync(temp, target);
+  withFileLock(`${target}.lock`, () => {
+    let existing = null;
+    try {
+      existing = JSON.parse(fs.readFileSync(target, "utf8"));
+    } catch (error) {
+      if (error?.code !== "ENOENT" && !(error instanceof SyntaxError)) throw error;
+    }
+    const existingObservedAt = Date.parse(existing?.quota?.observed_at ?? existing?.captured_at);
+    if (Number.isFinite(existingObservedAt) && existingObservedAt > observedAt) return;
+    writeJsonAtomic(target, snapshot);
+  });
 }
 
 function readBootstrapQuota() {
@@ -281,7 +306,7 @@ function isAccepted(input) {
 
 function requestsCapacityGuard(prompt) {
   if (/\$capacity-guard/i.test(prompt)) return true;
-  if (/\[@capacity-guard\]\(plugin:\/\/capacity-guard@personal\)/i.test(prompt)) return true;
+  if (/\[@[^\]\r\n]+\]\(plugin:\/\/capacity-guard@personal\/?\)/i.test(prompt)) return true;
   if (/(?:^|\s)@capacity-guard\b/i.test(prompt)) return true;
   if (/(?:使いすぎ防止モード.{0,24}(?:実行|有効|開始|オン|使って|やって)|(?:実行|有効|開始|オン).{0,24}使いすぎ防止モード)/i.test(prompt)) return true;
   return /(?:capacity\s*guard.{0,32}(?:enable|activate|start|run|use|実行|有効|開始)|(?:enable|activate|start|run|use|実行|有効|開始).{0,32}capacity\s*guard)/i.test(prompt);
@@ -490,13 +515,14 @@ function handlePreTool(input) {
   const observedQuota = latestQuota(records);
   if (observedQuota) persistQuotaSnapshot(observedQuota, input);
   if (isGuardApprovalTool(input)) return handleApprovalPre(input, records);
+  const currentQuota = observedQuota ?? readBootstrapQuota();
 
   const result = withState(input.session_id, (state) => {
     if (state.status === "TRIPPED") return { action: isDrainTool(input.tool_name) ? "allow_drain" : "deny_tripped" };
     if (state.status !== "ARMED") return { action: "allow_off" };
 
     const runtime = currentRuntime(records, input.turn_id, input.model);
-    const current = observedQuota;
+    const current = currentQuota;
     if (!current) {
       const missing = Number(state.missing_checkpoints || 0) + 1;
       const next = { ...state, runtime, missing_checkpoints: missing };

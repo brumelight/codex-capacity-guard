@@ -1,6 +1,6 @@
 {
   "name": "capacity-guard",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Remaining-quota threshold and reset guard for long-running Codex tasks.",
   "author": {
     "name": "BrumeLight"
