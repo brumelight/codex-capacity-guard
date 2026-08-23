@@ -26,9 +26,10 @@
 - **1%刻みの停止しきい値** — 残量0〜100%の整数を自然文で指定
 - **有効化前の確認** — 現在の残量、停止しきい値、推論レベルを表示し、推奨選択肢による明示承認を要求
 - **リセット検知** — 同じ利用枠の更新期間内で、100%未満から100%への回復を検知
-- **残量を確認できない場合の停止** — 有効な残量情報を2回連続で取得できない場合に停止
+- **残量を確認できない場合の停止** — 新しい有効な残量情報を2回連続で取得できない場合に停止
 - **すべてのエージェントで共有** — 親、子、孫エージェントが同じ停止状態を参照
 - **安全な停止** — 開始済みの処理は完了させ、フックで検知できる新しいタスクを停止
+- **保守的な観測値選択** — 新しい観測時刻を優先し、同時刻なら残量が少ない値を採用
 
 ## 導入手順
 
@@ -54,7 +55,9 @@ Codexを再起動して新しいタスクを開き、次のように指定しま
 残量30％まで使いすぎ防止モードで実行して
 ```
 
-表示された現在の残量、停止しきい値、推論レベルを確認し、推奨選択肢（表示言語により `有効化 (Recommended)` または `accept (Recommended)`）を選ぶと有効になります。
+表示された現在の残量、停止しきい値、推論レベルを確認し、固定の推奨選択肢 `accept (Recommended)` を選ぶと有効になります。
+
+新しいtaskの最初のpromptでは、同じ `session_id` に結び付いた安定したquota観測がまだ存在せず、現在値を確認できない場合があります。その場合はモードをOFFのままにし、同じtaskで後続のhook-visible checkpointにquotaが記録された後に有効化を再試行してください。snapshotを手書きしたり、別taskの値を流用したりしないでください。
 
 ### 選択肢形式の確認画面を有効にする（実験的）
 
@@ -67,7 +70,7 @@ default_mode_request_user_input = true
 
 すでに `[features]` がある場合は、同じ見出しを増やさず、その中へ `default_mode_request_user_input = true` だけを追加してください。設定後はCodexを再起動し、新しいタスクを開きます。
 
-この設定は実験的な機能です。Codexのバージョンによって、仕様が変わったり利用できなかったりする可能性があります。選択肢のラベルはCodexによってローカライズされる場合があります。選択肢を利用できない場合は、固定文による確認へ自動的に切り替わり、有効化には正確に `accept` と返信する必要があります。
+この設定は実験的な機能です。Codexのバージョンによって、仕様が変わったり利用できなかったりする可能性があります。安全な照合のため、質問、選択肢の順序、ラベル、説明は下記のcanonical formから変更できません。ホストがこれらをローカライズまたは変更した場合はfail-closedで有効化しません。選択肢を利用できない場合は、固定4行による確認へ切り替わり、有効化には正確に `accept` と返信する必要があります。
 
 ## 使い方
 
@@ -98,8 +101,10 @@ Current reasoning effort: "high".
 Enable 使いすぎ防止モード for this run?
 ```
 
-- 推奨選択肢（`有効化 (Recommended)`／`accept (Recommended)`）— 表示された条件で有効化
-- 拒否選択肢（`拒否`／`deny`）— 有効化せず、無効のままにする
+- 1番目: label `accept (Recommended)`、description `Enable Capacity Guard for this run.` — 表示された条件で有効化
+- 2番目: label `deny`、description `Keep Capacity Guard off.` — 有効化せず、無効のままにする
+
+質問は `capacity_guard_approval` というidを持つ1件だけでなければならず、前後の文、別の質問、選択肢の追加や並べ替えは拒否されます。fallbackでも表示する4行の本文全体が完全一致する場合だけ、次のraw promptが文字列 `accept` と完全一致するときに限り有効化します。前後の空白、tab、末尾改行は拒否します。本文ではCRLF列だけをLFへ正規化し、単独CRは拒否します。
 
 ## インストーラーの設定項目
 
@@ -136,9 +141,13 @@ macOS／Linuxでは、それぞれ `$HOME/plugins/capacity-guard/` と `$HOME/.a
 - 既存の配置先がある場合、`capacity-guard.backup.<UTC時刻>` へ移動してからコピー
 - 個人用マーケットプレイスに `capacity-guard` を登録または更新
 - `codex plugin add capacity-guard@personal` を実行
-- 実行時の状態と監査ログはCodexが提供する `PLUGIN_DATA` に保存（各hookの起動・失敗もpayloadを含めず記録）
+- 実行時の状態と監査ログはCodexが提供する `PLUGIN_DATA` に保存（各hookの起動・失敗をraw tool名やprompt payloadを含めず記録）
 - hook内部エラー時は、`PreToolUse` と有効化要求をfail-closedで停止し、その他のイベントでも未検証状態を明示
-- 新規taskの初回有効化では、pluginが直近5分以内に観測したquota snapshotを検証して使用し、承認直前に現taskの値と再照合
+- 初回有効化では、同じ親 `session_id` で直近5分以内に観測したquota snapshotだけを検証して使用し、承認直前に現taskの値と再照合
+- 選択式の承認は `tool_use_id`、turn、canonicalな唯一の質問と固定2選択肢、表示quota、観測identityをすべて照合。固定4行による承認も本文fingerprintと観測が変われば有効化せず再承認
+- state/snapshot lockはatomic directoryのidentityとowner token markerを更新直前に再検証。自分のmarkerだけを削除し、非再帰的な `rmdir` だけを使用
+- PreToolUseはglobal snapshot保存後にstateを1回だけlockし、hook全体で単調時計による2.5秒のlock待ちbudgetを共有。wall clockの巻戻りに影響されず、5秒のhook timeout内でfail-closed応答の余裕を確保
+- stateとquota snapshotはschema v2へ安全に移行。旧pending approvalは条件の再確認が必要なためOFFへ戻す
 
 ## 必要環境
 
@@ -188,6 +197,10 @@ node .\scripts\test-capacity-guard.mjs
 - 数値だけではユーザー任意リセットとシステム側リセットを区別できません。
 - `resets_at` は補助証拠として記録しますが、単独では停止判定に使いません。
 - `PreToolUse` が発火しないホスト型ツールや専用ツールは、強制停止を保証できません。
+- 同じquota snapshotを再読込しても新しい観測とは扱いません。新しい有効な観測を2 checkpoint連続で取得できなければ停止します。
+- 別sessionのsnapshotは有効化や実行継続の根拠にしません。親・子・孫はホストが共有する同じ親 `session_id` のstateを使用します。
+- hook時刻より後の観測は、ずれが1msでもfuture-datedとして利用しません。
+- lockはatomic directoryとowner-token markerを使います。inspection時は単一のfilesystem statから世代identityとmtimeを取得し、publish前、marker削除前、non-recursive `rmdir`直前に世代identityを再照合します。失敗時は自分のmarker以外を削除しません。通常のstale期間ではlive PIDと権限エラーを尊重しますが、PID再利用による永久停止を避けるため10分のhard maximum後はそのtoken markerを回収します。10分を超える異常なcritical sectionとは競合し得るという可用性上のtradeoffがあります。未知のforeign entryや旧形式file lockは自動削除しません。
 - 停止状態（`TRIPPED`）になった後は、開始済みの処理が終わるのを待つため、`list_agents` と `wait_agent` だけを許可します。
 - プラグインはモデル、推論レベル、速度を自動変更しません。
 - アンインストーラーはCodexへの登録だけを解除し、プラグイン本体とマーケットプレイスの登録情報は保持します。PowerShellでは `uninstall.ps1`、Bashでは `uninstall.sh` を使用します。
