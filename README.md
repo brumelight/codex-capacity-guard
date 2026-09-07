@@ -1,210 +1,63 @@
-<div align="center">
+# 使いすぎ防止モード（Capacity Guard）
 
-# 使いすぎ防止モード
+利用者が指定した残量条件で新しい作業を増やすのを止め、進行中の処理を安全な区切りまで収めてcheckpointを残すCodexスキルです。
 
-**利用枠の残量が指定値に達したら、Codexの長時間実行されるタスクを安全に停止させるプラグイン。**
-
-現在の残量と停止しきい値を確認してから有効化し、親子関係にあるエージェント全体がリセット後も新しいタスクを続けることを防ぎます。
-
-[English](README.en.md)
-
-[![Latest release](https://img.shields.io/github/v/release/brumelight/codex-capacity-guard?display_name=tag&sort=semver)](https://github.com/brumelight/codex-capacity-guard/releases/latest)
-[![License: MIT](https://img.shields.io/badge/license-MIT-informational)](LICENSE)
-
-</div>
-
----
-
-## 概要
-
-使いすぎ防止モード（Capacity Guard）は、Codexで長時間実行されるタスク、ゴールモード、複数エージェントによる並列タスクを実行するときに、利用枠（quota）の使いすぎを防ぐ安全装置です。
-
-残量が指定したしきい値以下になった場合、残量が100%へ回復した場合、残量を確認できない状態が続いた場合のいずれかを検知すると、すでに始まっている途中で止められない処理だけを完了させます。その後は、新しいツールの実行、サブエージェントの起動、追加指示、次のタスクを停止します。モデル、推論レベル、速度は変更しません。
-
-## 機能
-
-- **1%刻みの停止しきい値** — 残量0〜100%の整数を自然文で指定
-- **有効化前の確認** — 現在の残量、停止しきい値、推論レベルを表示し、推奨選択肢による明示承認を要求
-- **リセット検知** — 同じ利用枠の更新期間内で、100%未満から100%への回復を検知
-- **残量を確認できない場合の停止** — 新しい有効な残量情報を2回連続で取得できない場合に停止
-- **すべてのエージェントで共有** — 親、子、孫エージェントが同じ停止状態を参照
-- **安全な停止** — 開始済みの処理は完了させ、フックで検知できる新しいタスクを停止
-- **保守的な観測値選択** — 新しい観測時刻を優先し、同時刻なら残量が少ない値を採用
-
-## 導入手順
-
-### Windows（PowerShell）
-
-```powershell
-git clone https://github.com/BrumeLight/codex-capacity-guard.git
-cd codex-capacity-guard
-powershell -ExecutionPolicy Bypass -File .\install.ps1 -Locale auto
-```
-
-### macOS／Linux（Bash）
-
-```bash
-git clone https://github.com/BrumeLight/codex-capacity-guard.git
-cd codex-capacity-guard
-./install.sh --locale auto
-```
-
-Codexを再起動して新しいタスクを開き、次のように指定します。
-
-```text
-残量30％まで使いすぎ防止モードで実行して
-```
-
-表示された現在の残量、停止しきい値、推論レベルを確認し、固定の推奨選択肢 `accept (Recommended)` を選ぶと有効になります。
-
-新しいtaskの最初のpromptでは、同じ `session_id` に結び付いた安定したquota観測がまだ存在せず、現在値を確認できない場合があります。その場合はモードをOFFのままにし、同じtaskで後続のhook-visible checkpointにquotaが記録された後に有効化を再試行してください。snapshotを手書きしたり、別taskの値を流用したりしないでください。
-
-### 選択肢形式の確認画面を有効にする（実験的）
-
-通常モードで有効化／拒否の選択肢を表示するには、個人設定の `~/.codex/config.toml` に次を追加します。
-
-```toml
-[features]
-default_mode_request_user_input = true
-```
-
-すでに `[features]` がある場合は、同じ見出しを増やさず、その中へ `default_mode_request_user_input = true` だけを追加してください。設定後はCodexを再起動し、新しいタスクを開きます。
-
-この設定は実験的な機能です。Codexのバージョンによって、仕様が変わったり利用できなかったりする可能性があります。安全な照合のため、質問、選択肢の順序、ラベル、説明は下記のcanonical formから変更できません。ホストがこれらをローカライズまたは変更した場合はfail-closedで有効化しません。選択肢を利用できない場合は、固定4行による確認へ切り替わり、有効化には正確に `accept` と返信する必要があります。
+[English](README.en.md) · [MIT License](LICENSE)
 
 ## 使い方
 
-### しきい値を指定する
-
 ```text
 残量30％まで使いすぎ防止モードで実行して
 ```
 
-0〜100%の整数を1%刻みで指定できます。
+明確な依頼と閾値があれば、その指示を有効化の根拠にします。二重承認や固定の `accept` 入力は不要です。閾値が未指定・曖昧なら不足分だけを確認します。紹介、引用、インストール、見直しでは有効化しません。OFFでは残量確認も通常作業への干渉も行いません。
 
-### 既定値を使う
+利用可能なusage-limitsツールで開始時と意味のある区切りに残量を確認します。適用するbucket/windowを記録し、複数の制約がある場合は最小の残量を使います。モデルやeffortは変更しません。
 
-```text
-使いすぎ防止モードで実行して
-```
+委譲時は利用者の既存合意・閾値・対象枠・範囲・checkpointを子Agentへ明示的に渡します。子も区切りで残量を確認し、観測手段がなければ親へ確認を求めます。確認できなければ安全停止へ移り、停止条件を観測した子は親へ伝えます。親は合意した範囲へ停止を伝播します。
 
-しきい値を省略した場合は0%です。
+## 安全停止
 
-### 有効化を確認する
+- 残量が閾値以下、同じ枠でreset・予期しない回復を観測、または必要な観測を取得できなくなった場合、新しい作業を増やしません。観測の一時失敗は作業を挟まず一度だけ再確認できます。
+- 開始済み処理の結果回収、安全な取消、状態を確定するための必要な検証、保存、checkpoint、handoffを有限の範囲で行います。新機能・次のタスク・代替Agentの起動は行いません。
+- 稼働中Agentにも安全な区切りで停止・保存・返却するよう伝えます。収束が確認できなければ未確認の対象と次の操作を残します。
+- 停止理由、最新の観測値と時刻、閾値、完了と保留、checkpoint、再開手順を報告します。resetやGoal自動継続で勝手に再開しません。利用者の再開指示後、checkpointと現在の残量を照合します。
 
-確認画面には、値の照合に使う次の固定文言が英語で表示されます。
+checkpointにはその作業を復元するために必要な担当・Task・実効設定・変更所有範囲・証拠・未決・権限境界・次の具体的操作を残します。開始・区切り・最終停止前に保存し、圧縮前に機会があれば更新します。圧縮前通知や直前保存は常に保証されるものではありません。
 
-```text
-Current quota remaining: "82%".
-Stop threshold: "30%".
-Current reasoning effort: "high".
-Enable 使いすぎ防止モード for this run?
-```
+## 保証の範囲
 
-- 1番目: label `accept (Recommended)`、description `Enable Capacity Guard for this run.` — 表示された条件で有効化
-- 2番目: label `deny`、description `Keep Capacity Guard off.` — 有効化せず、無効のままにする
+0.2.0はprompt-firstです。hookを登録せず、状態機械やtool allowlistを使いません。旧hook入口も何も読み書きせず空の応答を返します。過去の状態ファイルは保存したまま、有効化の根拠には使いません。
 
-質問は `capacity_guard_approval` というidを持つ1件だけでなければならず、前後の文、別の質問、選択肢の追加や並べ替えは拒否されます。fallbackでも表示する4行の本文全体が完全一致する場合だけ、次のraw promptが文字列 `accept` と完全一致するときに限り有効化します。前後の空白、tab、末尾改行は拒否します。本文ではCRLF列だけをLFへ正規化し、単独CRは拒否します。
+指示への追従はbest-effortであり、残量の厳密な上限や全Agentの停止を機械的には保証しません。同じアカウントの他taskや、観測間の推論・開始済み処理でも残量は減ります。promptで制御できない具体的な失敗を確認した場合だけ、その失敗に必要な決定論的補助を検討します。
 
-## インストーラーの設定項目
+## インストール・更新
 
-### PowerShell
-
-| オプション | 説明 | 既定値 |
-| --- | --- | --- |
-| `-Locale auto\|ja\|en` | 画面上の表示名に使う言語 | `auto` |
-| `-TargetRoot <path>` | プラグインを配置する親フォルダー | `%USERPROFILE%\plugins` |
-
-### Bash
-
-| オプション | 説明 | 既定値 |
-| --- | --- | --- |
-| `--locale auto\|ja\|en` | 画面上の表示名に使う言語 | `auto` |
-| `--target-root <path>` | プラグインを配置する親フォルダー | `$HOME/plugins` |
-
-`auto` はPowerShellではWindowsの優先言語、Bashではロケール環境変数を参照します。日本語なら「使いすぎ防止モード」、それ以外は「Capacity Guard」を使用します。
-
-## 出力・変更内容
-
-インストーラーは次の変更を行います。
-
-```text
-%USERPROFILE%\plugins\capacity-guard\
-└── プラグイン本体
-
-%USERPROFILE%\.agents\plugins\marketplace.json
-└── 個人用マーケットプレイスの登録情報
-```
-
-macOS／Linuxでは、それぞれ `$HOME/plugins/capacity-guard/` と `$HOME/.agents/plugins/marketplace.json` を使用します。
-
-- 既存の配置先がある場合、`capacity-guard.backup.<UTC時刻>` へ移動してからコピー
-- 個人用マーケットプレイスに `capacity-guard` を登録または更新
-- `codex plugin add capacity-guard@personal` を実行
-- 実行時の状態と監査ログはCodexが提供する `PLUGIN_DATA` に保存（各hookの起動・失敗をraw tool名やprompt payloadを含めず記録）
-- hook内部エラー時は、`PreToolUse` と有効化要求をfail-closedで停止し、その他のイベントでも未検証状態を明示
-- 初回有効化では、同じ親 `session_id` で直近5分以内に観測したquota snapshotだけを検証して使用し、承認直前に現taskの値と再照合
-- 選択式の承認は `tool_use_id`、turn、canonicalな唯一の質問と固定2選択肢、表示quota、観測identityをすべて照合。固定4行による承認も本文fingerprintと観測が変われば有効化せず再承認
-- state/snapshot lockはatomic directoryのidentityとowner token markerを更新直前に再検証。自分のmarkerだけを削除し、非再帰的な `rmdir` だけを使用
-- PreToolUseはglobal snapshot保存後にstateを1回だけlockし、hook全体で単調時計による2.5秒のlock待ちbudgetを共有。wall clockの巻戻りに影響されず、5秒のhook timeout内でfail-closed応答の余裕を確保
-- stateとquota snapshotはschema v2へ安全に移行。旧pending approvalは条件の再確認が必要なためOFFへ戻す
-
-## 必要環境
-
-- Windows PowerShell 5.1+、またはmacOS／LinuxのBash 3.2+
-- Node.js 18+
-- プラグインとフックに対応したCodex CLI／Codexアプリ
-- Git（リポジトリを複製して導入する場合）
-
-PowerShell版とBash版のインストーラーを同梱しています。フック用コマンドは、シェル固有の環境変数構文ではなく、Codexが実行前に展開する `${PLUGIN_ROOT}` プレースホルダーを使用します。
-
-## プロジェクト構成
-
-```text
-.
-├── .codex-plugin/plugin.json       # プラグインメタデータ
-├── hooks/hooks.json                # 動作段階ごとのフック定義
-├── scripts/
-│   ├── capacity-guard-hook.mjs     # 判定・共有状態・安全停止
-│   └── test-capacity-guard.mjs     # 合成テスト
-├── skills/capacity-guard/          # Codex向け利用手順
-├── install.ps1
-├── install.sh
-├── uninstall.ps1
-├── uninstall.sh
-├── CHANGELOG.md
-├── README.md
-├── README.en.md
-└── LICENSE
-```
-
-## 開発
-
-外部のnpmパッケージは使用していません。
+このrepositoryを恒久的な場所へ配置して実行します。Node.jsと `codex plugin marketplace add` / `codex plugin add` を持つCodex CLIが必要です。
 
 ```powershell
-# 構文検査
-node --check .\scripts\capacity-guard-hook.mjs
-node --check .\scripts\test-capacity-guard.mjs
-
-# テスト
-node .\scripts\test-capacity-guard.mjs
+.\install.ps1 -Locale ja
+# 既に D:/BrumeLight/capacity-guard が編集元の場合、コピーせず登録:
+.\install.ps1 -Locale ja -TargetRoot D:/BrumeLight
 ```
 
-## 安全上の注意
+```bash
+./install.sh --locale en
+# 既存の <parent>/capacity-guard をそのまま登録:
+./install.sh --locale en --target-root <parent>
+```
 
-- 利用枠はアカウント単位で共有される場合があり、別のタスクによる消費も確認結果へ影響します。
-- 数値だけではユーザー任意リセットとシステム側リセットを区別できません。
-- `resets_at` は補助証拠として記録しますが、単独では停止判定に使いません。
-- `PreToolUse` が発火しないホスト型ツールや専用ツールは、強制停止を保証できません。
-- 同じquota snapshotを再読込しても新しい観測とは扱いません。新しい有効な観測を2 checkpoint連続で取得できなければ停止します。
-- 別sessionのsnapshotは有効化や実行継続の根拠にしません。親・子・孫はホストが共有する同じ親 `session_id` のstateを使用します。
-- hook時刻より後の観測は、ずれが1msでもfuture-datedとして利用しません。
-- lockはatomic directoryとowner-token markerを使います。inspection時は単一のfilesystem statから世代identityとmtimeを取得し、publish前、marker削除前、non-recursive `rmdir`直前に世代identityを再照合します。失敗時は自分のmarker以外を削除しません。通常のstale期間ではlive PIDと権限エラーを尊重しますが、PID再利用による永久停止を避けるため10分のhard maximum後はそのtoken markerを回収します。10分を超える異常なcritical sectionとは競合し得るという可用性上のtradeoffがあります。未知のforeign entryや旧形式file lockは自動削除しません。
-- 停止状態（`TRIPPED`）になった後は、開始済みの処理が終わるのを待つため、`list_agents` と `wait_agent` だけを許可します。
-- プラグインはモデル、推論レベル、速度を自動変更しません。
-- アンインストーラーはCodexへの登録だけを解除し、プラグイン本体とマーケットプレイスの登録情報は保持します。PowerShellでは `uninstall.ps1`、Bashでは `uninstall.sh` を使用します。
+既定の配置先はユーザーホームの `plugins/capacity-guard`。別の配置先に既存内容があれば、従来どおりバックアップへ移してコピーします。同じ編集元を使う場合はその親を指定してください。配置したplugin内の `.agents/plugins/marketplace.json` から `./` を参照し、そのディレクトリをpersonal marketplaceとして登録してからpluginを追加・更新します。別のpersonal marketplaceが既に登録されている場合はCLIが登録を拒否するため、その配置を確認してから統合してください。既存登録を自動削除しません。インストール済みpluginを先に削除しません。
 
-## ライセンス
+現在実行中のtaskは停止・再起動しません。古いtaskが読み込んだ指示や旧hook登録の自動更新は保証しません。新しいplugin metadataが読み込まれた新規taskで利用してください。必要なら、稼働中作業を安全に終えてから利用者がアプリを再起動してください。
 
-[MIT License](LICENSE) © 2026 BrumeLight
+## 検証
+
+```text
+node --check scripts/capacity-guard-hook.mjs
+node scripts/test-capacity-guard.mjs
+```
+
+自動検証はhook登録がないこと、旧入口がOFF・旧ARMED/TRIPPED・破損状態・ロック競合・監査書込不能・不正入力でも干渉しないことを確認します。promptの意味や実Agentの安全停止を証明するテストではありません。
+
+実際の利用手順の正本は [SKILL.md](skills/capacity-guard/SKILL.md)、変更履歴は [CHANGELOG.md](CHANGELOG.md) です。

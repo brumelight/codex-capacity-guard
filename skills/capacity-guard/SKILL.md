@@ -1,80 +1,63 @@
 ---
 name: capacity-guard
-description: Protect long-running Codex work with an explicitly accepted quota-remaining threshold, reset detector, and observation-failure stop. Use when the user asks for Capacity Guard, 使いすぎ防止モード, quota protection, a remaining-percentage limit, safe long-task execution, or wants to prevent a Goal, multi-agent task, or extended workflow from consuming too much capacity. This guard is model- and reasoning-effort-independent.
+description: Run explicitly requested quota-limited work with prompt-first checks and a safe checkpoint before stopping. Use for Capacity Guard or 使いすぎ防止モード requests. Reviewing or editing this plugin does not activate it.
 ---
 
 # Capacity Guard
 
-## Activation
+## Agreement and scope
 
-Accept a natural-language threshold such as `残量30％まで使いすぎ防止モードで実行して`.
+Enable only when the user explicitly asks to run work with this guard. Discussion, quoted examples, installation, review, or maintenance are not activation. For delegated work, an explicit handoff of the user's existing guard agreement authorizes the child within that same scope; the user need not repeat the request to each child. Without either instruction, remain OFF and do not inspect quota, ask for guard approval, or interrupt ordinary work.
 
-- Interpret the single percentage as the remaining-quota stop threshold.
-- Accept only a whole number from 0% through 100%, so every 1% step is configurable.
-- Use 0% when the user provides no percentage.
-- Reject decimal, out-of-range, or multiple percentages as ambiguous.
+Use the user's remaining-quota threshold (0–100%). If it is missing or ambiguous, ask only for the missing threshold; do not invent 0%. An explicit instruction with a clear threshold is sufficient: no second approval, fixed wording, or exact `accept` token is required. Preserve the agreed threshold and scope across continuations until the user changes them or the guarded work ends.
 
-Read the `CAPACITY_GUARD_RUNTIME`, `CAPACITY_GUARD_QUOTA`, and `PENDING_APPROVAL; stop_threshold=N%` metadata injected by `UserPromptSubmit`. Never arm without explicit `accept`.
+Read the current account quota with the available usage-limits tool (in Codex Desktop: `mcp__codex_app__get_usage_limits`). Use `rateLimitsByLimitId` when present, and the legacy `rateLimits` otherwise. Remaining percent is `100 - usedPercent`, clamped to 0–100. Track the applicable quota bucket and its window separately; use the lowest applicable remaining percentage when several windows constrain the work. Do not mix unrelated model buckets. If the applicable bucket cannot be identified, clarify before new guarded work. Record observed values and time; missing values are unknown, never zero. A reported model or effort is not proof of the effective runtime setting.
 
-Treat plugin mentions inside code fences, inline code, blockquotes, or quoted text as discussion/examples, not activation requests. Canonical Desktop mentions may use a localized label and may include the trailing slash in `plugin://capacity-guard@personal/`.
+Briefly state the agreed scope, threshold, and observed quota. Account usage includes concurrent tasks. This is best-effort prompt guidance, not an exact quota cap: reasoning, other tasks, and an already-running operation can cross the threshold between checks. If the starting quota is unavailable, do not claim active monitoring or start new guarded work; explain the missing observation. Finish any already-started work safely as below.
 
-When `request_user_input` is available, ask exactly one question:
+## Delegation
 
-- id: `capacity_guard_approval`
-- question: `Current quota remaining: "<exact injected remaining>%". Stop threshold: "<exact requested threshold>%". Current reasoning effort: "<exact injected effort>". Enable 使いすぎ防止モード for this run?`
-- first option: label `accept (Recommended)`; description `Enable Capacity Guard for this run.`
-- second option: label `deny`; description `Keep Capacity Guard off.`
+Before delegating guarded work, pass the existing user agreement, threshold, applicable quota bucket/windows, scope, and shared checkpoint location explicitly, including when the child receives no conversation history. Tell the child to follow these boundary checks and finite safe-stop rules and carry the same agreement into any authorized further delegation. A mention of this plugin alone is not inherited authorization.
 
-Do not add a prefix, suffix, second question, third option, or localized alternative. Do not begin task work before the response. Only the exact canonical answer `accept (Recommended)` arms; `deny` keeps the guard OFF, and an answer not present in the canonical options cannot arm.
+Each child checks quota before its next substantial unit and at useful boundaries. If it cannot observe quota directly, it requests a fresh check from the parent at those boundaries instead of relying on the spawn-time value. If that check cannot be obtained, apply the observation-unavailable close-out rule. When any child observes a stop condition, it stops adding work and notifies its parent promptly with the reason and latest observation; the parent propagates the stop through the guarded scope and coordinates closure. A parent waiting for returns must still arrange these checks; waiting alone is not quota monitoring.
 
-The hook binds the approval to its `tool_use_id`, turn, canonical question shape, displayed quota, and observation identity in both PreToolUse and PostToolUse. It permits only CRLF/LF newline normalization. If any identity or canonical field is missing or changed, do not claim the mode is armed; request a fresh approval.
+## Check at useful boundaries
 
-If `request_user_input` is unavailable, present this exact fallback block, substituting only the injected values:
+Check before starting guarded work, before another substantial unit or delegation, and at meaningful completion/checkpoint boundaries. Increase care near the threshold; do not poll every tool or treat an unchanged fresh observation as a failure. Avoid launching an indivisible operation that is unlikely to fit the remaining margin. Do not spend quota to manufacture an exact threshold crossing.
 
-```text
-Current quota remaining: "<remaining>%".
-Current reasoning effort: "<effort>".
-Capacity Guard policy: stop_threshold=<threshold>%, reset=stop.
-To enable Capacity Guard, reply with exactly `accept`; otherwise reply `deny`.
-```
+Stop adding work when:
 
-The assistant message must be exactly this four-line block, with no surrounding text or unrelated permission request. Only CRLF sequences are normalized to LF; bare CR is rejected. Only a next raw prompt exactly equal to the case-sensitive string `accept` arms the fallback. Surrounding spaces, tabs, and newlines are not trimmed and cannot arm. Every other prompt keeps the guard OFF. The hook revalidates the saved block fingerprint at acceptance.
+- Any applicable remaining quota reaches or falls below the agreed threshold.
+- A new reliable reading for the same bucket/window shows a reset or unexpected recovery (for example, below 100% to 100%). Record the observation; numbers alone do not identify a user reset versus a scheduled reset. Do not automatically use the replenished quota.
+- A required quota check fails or is unusable. One bounded read-only retry is reasonable for a transient failure, with no new task work between checks; if still unavailable, close safely with quota unknown. Do not count ordinary tool calls as failed observations.
+- An internal monitoring error makes continued observation unreliable. Do not convert that error into blanket tool denial or claim protection is verified.
 
-Fallback acceptance is valid only while the displayed quota observation identity is unchanged. If quota drifts, resets, or is newly observed before `accept`, keep the guard OFF and request activation again with the new values.
+## Close safely, then stop
 
-If the current quota value is unavailable, do not offer activation; report that the mode remains OFF because its starting value cannot be confirmed. This can occur on the first prompt of a new task before the same `session_id` has a stable quota observation. Retry later in that same task after a hook-visible checkpoint; never hand-write a snapshot or borrow another task's value.
+Once a stopping condition is observed, identify the operations already in progress and the smallest finite set of actions needed to leave recoverable state. Do not start another task, wave, feature, broad investigation, new agent, or discretionary cleanup. Finishing the entire original assignment is not required for safe stopping.
 
-## Runtime behavior
+Let an indivisible operation finish, or use its supported safe cancellation when appropriate. Save in-progress edits coherently, collect the result of an already-started command, perform only validation needed to establish the state left behind, and write a checkpoint/handoff. These operations may use tools and writes. State why any nontrivial closing action is necessary; narrow or stop it if it starts growing into fresh work. Do not broaden authority for publishing, deleting, or other external effects.
 
-- Treat the displayed reasoning effort as audit metadata, not an activation condition.
-- Share one state across the root, children, and grandchildren through the parent `session_id`.
-- Use quota-snapshot fallback only when it was observed in that same parent `session_id`; never use another session's snapshot to authorize work.
-- Treat an observation as new only when its validated timestamp is newer, or when the timestamp ties and its remaining quota is lower. Re-reading an identical or older snapshot is a missing checkpoint.
-- Keep the guard ARMED across long-running and Goal continuations until the user sends exact `deny`, sends `disable capacity guard`, the session ends, or the guard trips.
-- Stop when remaining quota reaches or falls below the accepted threshold.
-- Warn that account-level quota may include consumption from other concurrent tasks.
-- Warn users not to perform a discretionary quota reset during guarded work unless they intend to stop it; user and system reset causes are not distinguishable from quota numbers alone.
+For agents already working, tell them to stop taking new work, reach their next safe boundary, save their result/checkpoint, and return status. Wait for or collect those returns and verify the relevant saved artifacts. Do not spawn a replacement or take over their unfinished task. Do not force-kill an unknown side effect to satisfy the threshold. If a child or operation cannot be observed or safely stopped, record its identity and pending state, report that convergence is unverified, and leave explicit follow-up rather than claiming the tree stopped.
 
-## Trip conditions
+## Checkpoint and resume
 
-Trip before the next hook-visible tool when any enabled policy matches:
+Use the task's established writable record location. Save at task start, meaningful boundaries, before the final stop report, and before compaction when the runtime provides that opportunity. A pre-compaction notification is not guaranteed; boundary saves limit the loss. After compaction, read the checkpoint first, compare it with actual state, and update it before continuing.
 
-- `THRESHOLD_REACHED`: remaining quota reaches or falls below the accepted whole-percentage threshold.
-- `RESET_DETECTED`: within the same `limit_id` and `window_minutes`, remaining quota changes from below 100% to 100%.
-- `OBSERVATION_UNAVAILABLE`: two consecutive checkpoints have no new usable quota observation.
+Keep enough information to restore this task, without forcing unrelated fields:
 
-Invalid, stale, expired, and future-dated observations are unavailable. Treat any timestamp later than the hook's current time as future-dated, without a positive clock-skew allowance. Legacy pending approvals require a fresh approval after migration; never infer acceptance from old state.
+- Purpose, accepted guard instruction/scope/threshold, latest quota with observation time, stop reason, and current status.
+- Responsible actor and relevant parent/child task IDs; requested versus actually observed model/effort where relevant.
+- Worktree, branch, HEAD, ownership and changes when working in a repository.
+- Completion criteria, completed actions and evidence, unfinished or unverified items, risks and pending side effects.
+- Handoff/artifact locations, required documents and applicable authority boundaries, outstanding owner decisions, and the next concrete action.
 
-Treat `resets_at` only as auxiliary evidence. Never infer whether a recovery was a user reset, system reset, billing refresh, quota refresh, or anomaly without separate evidence.
+If saving fails, report the failure and provide the essential recovery information directly in the final response. Do not claim a checkpoint exists until its write is verified.
 
-## Safe stop
+End with the stop reason, latest observed quota/time (or unknown), threshold, completed and pending work, checkpoint location, and concrete resume steps. Do not auto-resume on a later Goal continuation, recovered observation, or quota reset. Resume only when the user asks to continue, after re-reading the checkpoint and checking quota; preserve existing authorization and ask only about an actual ambiguity or changed boundary. If the same stop condition remains, report it without starting more work.
 
-After TRIPPED:
+## Implementation boundary
 
-- allow an indivisible tool invocation that already passed `PreToolUse` to finish;
-- allow only `list_agents` and `wait_agent` for minimal task-tree drain;
-- block new tools, edits, MCP calls, spawns, follow-ups, waves, and next tasks;
-- report current location, completed scope, trip reason, current quota, accepted threshold, and next task;
-- end the assistant turn and leave continuation to the user.
+The prompt controls this workflow. This version registers no hooks and does not use legacy hook state as activation authority. The old hook entrypoint is inert for installations transitioning from a previously loaded hook registration; it neither reads state nor denies tools. Existing historical state is left untouched. An already-running old hook process can still finish under its old code, so do not claim an instantaneous runtime switch.
 
-Prefer hook-visible local tools during guarded work. Hosted and specialized tool paths that do not emit `PreToolUse` are outside the enforcement guarantee.
+Only add deterministic assistance after recording a concrete failure of these prompt instructions, its expected versus observed behavior, and why a targeted instruction cannot address it. Do not preemptively reintroduce an approval state machine, per-tool allowlist, or global tool blockade.
