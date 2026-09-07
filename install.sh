@@ -139,16 +139,10 @@ fs.writeFileSync(
 );
 NODE
 
-marketplace_path="$HOME/.agents/plugins/marketplace.json"
+marketplace_path="$target_plugin/.agents/plugins/marketplace.json"
 mkdir -p -- "$(dirname -- "$marketplace_path")"
 
-resolved_home="$(CDPATH= cd -- "$HOME" && pwd -P)"
-default_plugin_root="$resolved_home/plugins"
-if [[ "$resolved_target_root" == "$default_plugin_root" ]]; then
-  marketplace_source="./plugins/capacity-guard"
-else
-  marketplace_source="$target_plugin"
-fi
+marketplace_source="./"
 
 node - "$marketplace_path" "$plugin_id" "$marketplace_source" <<'NODE'
 const fs = require('node:fs');
@@ -188,11 +182,11 @@ marketplace.plugins.push({
 fs.writeFileSync(marketplacePath, `${JSON.stringify(marketplace, null, 2)}\n`, 'utf8');
 NODE
 
-codex plugin remove "$plugin_id@personal" >/dev/null 2>&1 || true
+codex plugin marketplace add "$target_plugin"
 if ! codex plugin add "$plugin_id@personal"; then
   printf 'Codex could not install %s from the personal marketplace.\n' "$plugin_id" >&2
   exit 1
 fi
 
 printf 'Installed %s (%s), locale=%s\n' "$display_name" "$plugin_id" "$locale"
-printf 'Restart Codex before using the plugin in a new task.\n'
+printf 'Use a new task after Codex reloads plugin metadata. Already-running tasks are not restarted or guaranteed to refresh.\n'

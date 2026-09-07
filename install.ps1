@@ -67,7 +67,7 @@ $skillUi = [Text.RegularExpressions.Regex]::Replace(
 )
 [IO.File]::WriteAllText($skillUiPath, $skillUi, [Text.UTF8Encoding]::new($false))
 
-$marketplacePath = Join-Path $env:USERPROFILE '.agents\plugins\marketplace.json'
+$marketplacePath = Join-Path $targetPlugin '.agents\plugins\marketplace.json'
 $marketplaceDirectory = Split-Path -Parent $marketplacePath
 if (-not [IO.Directory]::Exists($marketplaceDirectory)) {
     [IO.Directory]::CreateDirectory($marketplaceDirectory) | Out-Null
@@ -84,12 +84,7 @@ if (Test-Path -LiteralPath $marketplacePath) {
 }
 
 $entries = @($marketplace.plugins | Where-Object { $_.name -ne $pluginId })
-$defaultPluginRoot = [IO.Path]::GetFullPath((Join-Path $env:USERPROFILE 'plugins'))
-$marketplaceSource = if ($resolvedTargetRoot.Equals($defaultPluginRoot, [StringComparison]::OrdinalIgnoreCase)) {
-    './plugins/capacity-guard'
-} else {
-    $targetPlugin.Replace('\', '/')
-}
+$marketplaceSource = './'
 $entries += [pscustomobject]@{
     name = $pluginId
     source = [pscustomobject]@{ source = 'local'; path = $marketplaceSource }
@@ -103,10 +98,10 @@ $marketplace.plugins = $entries
     [Text.UTF8Encoding]::new($false)
 )
 
-$previousErrorPreference = $ErrorActionPreference
-$ErrorActionPreference = 'Continue'
-& codex plugin remove "$pluginId@personal" *> $null
-$ErrorActionPreference = $previousErrorPreference
+& codex plugin marketplace add $targetPlugin
+if ($LASTEXITCODE -ne 0) {
+    throw 'Codex could not register the personal marketplace. Existing installation was not removed.'
+}
 
 & codex plugin add "$pluginId@personal"
 if ($LASTEXITCODE -ne 0) {
@@ -114,4 +109,4 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Installed $displayName ($pluginId), locale=$Locale"
-Write-Host 'Restart Codex before using the plugin in a new task.'
+Write-Host 'Use a new task after Codex reloads plugin metadata. Already-running tasks are not restarted or guaranteed to refresh.'

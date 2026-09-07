@@ -2,6 +2,21 @@
 
 All notable changes to Capacity Guard are documented in this file. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - Unreleased
+
+### Changed
+
+- Replace per-tool quota enforcement and exact-token approval with prompt-first operation based on the user's explicit scope and threshold.
+- Stop adding work at threshold, reset/recovery, or unusable observation; permit finite safe close-out, child coordination, checkpoint writes, and truthful recovery instructions.
+- Remove hook registrations and retain an inert legacy entrypoint. OFF performs no quota/state/audit work; legacy corrupt state, lock contention, or internal failures cannot cause a hook denial through this entrypoint.
+- Treat historical hook state as history, not current activation authority. Prompt adherence and exact budget enforcement are not guaranteed.
+- Register a self-contained local marketplace with relative source `./` before installation without first removing the installed plugin.
+
+### Validation
+
+- Synthetic legacy-entrypoint and registration checks; representative prompt scenarios documented separately from actual Agent observations.
+- Actual guarded-agent threshold convergence requires an authorized guarded run; the maintenance task does not enable the guard.
+
 ## [0.1.3] - 2026-08-23
 
 ### Fixed
