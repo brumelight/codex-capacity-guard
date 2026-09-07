@@ -1,13 +1,13 @@
 {
   "name": "capacity-guard",
-  "version": "0.2.0+codex.20260907102644",
+  "version": "0.2.0+codex.20260907105011",
   "description": "Prompt-first quota checks and recoverable safe stopping for explicitly guarded work.",
   "author": {
     "name": "BrumeLight"
   },
   "skills": "./skills/",
   "interface": {
-    "displayName": "使いすぎ防止モード",
+    "displayName": "\u4f7f\u3044\u3059\u304e\u9632\u6b62\u30e2\u30fc\u30c9",
     "shortDescription": "Stop long tasks at a chosen remaining-quota threshold.",
     "longDescription": "Uses the agreed remaining-quota threshold to stop adding work, close in-progress operations safely, and save a checkpoint. Best-effort prompt guidance; no tool-blocking hooks.",
     "developerName": "BrumeLight",

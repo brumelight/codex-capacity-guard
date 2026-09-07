@@ -7,13 +7,19 @@ description: Run explicitly requested quota-limited work with prompt-first check
 
 ## Agreement and scope
 
-Enable only when the user explicitly asks to run work with this guard. Discussion, quoted examples, installation, review, or maintenance are not activation. Without that instruction, remain OFF and do not inspect quota, ask for guard approval, or interrupt ordinary work.
+Enable only when the user explicitly asks to run work with this guard. Discussion, quoted examples, installation, review, or maintenance are not activation. For delegated work, an explicit handoff of the user's existing guard agreement authorizes the child within that same scope; the user need not repeat the request to each child. Without either instruction, remain OFF and do not inspect quota, ask for guard approval, or interrupt ordinary work.
 
 Use the user's remaining-quota threshold (0–100%). If it is missing or ambiguous, ask only for the missing threshold; do not invent 0%. An explicit instruction with a clear threshold is sufficient: no second approval, fixed wording, or exact `accept` token is required. Preserve the agreed threshold and scope across continuations until the user changes them or the guarded work ends.
 
 Read the current account quota with the available usage-limits tool (in Codex Desktop: `mcp__codex_app__get_usage_limits`). Use `rateLimitsByLimitId` when present, and the legacy `rateLimits` otherwise. Remaining percent is `100 - usedPercent`, clamped to 0–100. Track the applicable quota bucket and its window separately; use the lowest applicable remaining percentage when several windows constrain the work. Do not mix unrelated model buckets. If the applicable bucket cannot be identified, clarify before new guarded work. Record observed values and time; missing values are unknown, never zero. A reported model or effort is not proof of the effective runtime setting.
 
 Briefly state the agreed scope, threshold, and observed quota. Account usage includes concurrent tasks. This is best-effort prompt guidance, not an exact quota cap: reasoning, other tasks, and an already-running operation can cross the threshold between checks. If the starting quota is unavailable, do not claim active monitoring or start new guarded work; explain the missing observation. Finish any already-started work safely as below.
+
+## Delegation
+
+Before delegating guarded work, pass the existing user agreement, threshold, applicable quota bucket/windows, scope, and shared checkpoint location explicitly, including when the child receives no conversation history. Tell the child to follow these boundary checks and finite safe-stop rules and carry the same agreement into any authorized further delegation. A mention of this plugin alone is not inherited authorization.
+
+Each child checks quota before its next substantial unit and at useful boundaries. If it cannot observe quota directly, it requests a fresh check from the parent at those boundaries instead of relying on the spawn-time value. If that check cannot be obtained, apply the observation-unavailable close-out rule. When any child observes a stop condition, it stops adding work and notifies its parent promptly with the reason and latest observation; the parent propagates the stop through the guarded scope and coordinates closure. A parent waiting for returns must still arrange these checks; waiting alone is not quota monitoring.
 
 ## Check at useful boundaries
 

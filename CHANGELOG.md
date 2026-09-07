@@ -11,6 +11,7 @@ All notable changes to Capacity Guard are documented in this file. This project 
 - Remove hook registrations and retain an inert legacy entrypoint. OFF performs no quota/state/audit work; legacy corrupt state, lock contention, or internal failures cannot cause a hook denial through this entrypoint.
 - Treat historical hook state as history, not current activation authority. Prompt adherence and exact budget enforcement are not guaranteed.
 - Register a self-contained local marketplace with relative source `./` before installation without first removing the installed plugin.
+- Explicitly transfer the existing guard agreement at delegation, including history-free children; require child boundary observations or parent-assisted checks and propagate child-observed stops upstream.
 
 ### Validation
 

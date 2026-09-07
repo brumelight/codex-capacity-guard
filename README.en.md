@@ -14,6 +14,8 @@ An explicit request with a clear threshold is sufficient. No duplicate approval 
 
 Check the applicable quota bucket/windows with the available usage-limits tool at the start and meaningful work boundaries. Use the lowest applicable remaining percentage. Model and effort are unchanged.
 
+Pass the existing user agreement, threshold, quota bucket/windows, scope, and checkpoint explicitly when delegating. Children check at work boundaries or request fresh checks from the parent if they lack observation tools. An unavailable check leads to safe close-out. A child that observes a stop condition informs the parent, which propagates it through the guarded scope.
+
 ## Safe stopping
 
 At threshold, observed reset/unexpected recovery, or unusable required observation, stop adding work. A transient observation failure permits one bounded retry without intervening task work. Collect already-started results, cancel safely when appropriate, verify only what is necessary to establish recoverable state, and save a checkpoint/handoff. Do not start a new feature, next task, or replacement agent.
